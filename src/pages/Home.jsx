@@ -6,6 +6,7 @@ const Home = () => {
   const [email, setEmail] = useState(""); // Email from backend
   const [room, setRoom] = useState(""); // Auto-generated Room ID
   const [roomGenerated, setRoomGenerated] = useState(false); // Track if room is generated
+  const [manualRoom, setManualRoom] = useState(""); // Room ID entered manually by the user
 
   const socket = useSocket();
   const navigate = useNavigate();
@@ -44,13 +45,14 @@ const Home = () => {
   const handleSubmitForm = useCallback(
     (e) => {
       e.preventDefault();
-      if (email && room) {
-        socket.emit("room:join", { email, room });
+      const selectedRoom = manualRoom || room; // Use manually entered room or auto-generated one
+      if (email && selectedRoom) {
+        socket.emit("room:join", { email, room: selectedRoom });
       } else {
         console.error("Email or room is missing");
       }
     },
-    [email, room, socket]
+    [email, room, manualRoom, socket]
   );
 
   const handleJoinRoom = useCallback(
@@ -98,7 +100,7 @@ const Home = () => {
               htmlFor="room"
               className="block text-sm font-medium text-gray-400"
             >
-              Room Number
+              Auto-Generated Room Number
             </label>
             <input
               type="text"
@@ -114,6 +116,22 @@ const Home = () => {
             >
               Copy Room ID
             </button>
+          </div>
+          <div>
+            <label
+              htmlFor="manualRoom"
+              className="block text-sm font-medium text-gray-400"
+            >
+              Enter Room Number (Optional)
+            </label>
+            <input
+              type="text"
+              id="manualRoom"
+              placeholder="Enter Room ID"
+              value={manualRoom}
+              onChange={(e) => setManualRoom(e.target.value)}
+              className="w-full mt-2 p-3 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+            />
           </div>
           <button
             type="submit"
