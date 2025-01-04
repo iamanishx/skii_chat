@@ -60,8 +60,7 @@ const RoomPage = () => {
     setTimeout(() => setIsCopied(false), 2000);
   }, [socket.id]);
 
-  // ... (keep all the existing WebRTC related handlers)
-   const handleIncommingCall = useCallback(
+    const handleIncommingCall = useCallback(
       async ({ from, offer }) => {
         setRemoteSocketId(from);
         const stream = await navigator.mediaDevices.getUserMedia({

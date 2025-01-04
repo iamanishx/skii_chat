@@ -4,10 +4,10 @@ const Login = () => {
  
   useEffect(() => {
       localStorage.removeItem("token");
-  }, [ ]);
+  }, [ ]);  
 
   const handleGoogleAuth = () => {
-    window.location.href = "http://localhost:3000/auth/google";
+    window.location.href = "https://skii-chat.up.railway.app/auth/google";
   };
 
   return (
