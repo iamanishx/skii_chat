@@ -18,7 +18,7 @@ const Home = () => {
         const response = await fetch(
           "https://skii-chat.up.railway.app/api/user/email",
           {
-            credentials: "include", // Send cookies with the request
+            credentials: "include", 
             headers: {
               "Content-Type": "application/json",
             },
@@ -26,7 +26,7 @@ const Home = () => {
         );
         const data = await response.json();
         if (response.ok && data.email) {
-          setEmail(data.email); // Set the email from backend
+          setEmail(data.email); 
           console.log("Email fetched:", data.email);
         } else {
           console.error("Failed to fetch email");
@@ -50,7 +50,7 @@ const Home = () => {
   const handleSubmitForm = useCallback(
     (e) => {
       e.preventDefault();
-      const selectedRoom = manualRoom || room; // Use manually entered room or auto-generated one
+      const selectedRoom = manualRoom || room; 
       if (email && selectedRoom) {
         socket.emit("room:join", { email, room: selectedRoom });
       } else {
