@@ -15,8 +15,9 @@ const Home = () => {
   useEffect(() => {
     const fetchEmail = async () => {
       try {
+        const url = import.meta.env.VITE_API_URL;
         const response = await fetch(
-          "https://skii-chat.up.railway.app/api/user/email",
+          `${url}`,
           {
             credentials: "include", 
             headers: {

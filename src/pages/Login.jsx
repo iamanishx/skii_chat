@@ -7,7 +7,8 @@ const Login = () => {
   }, [ ]);  
 
   const handleGoogleAuth = () => {
-    window.location.href = "https://skii-chat.up.railway.app/auth/google";
+    const authUrl = import.meta.env.VITE_AUTH_URL;
+    window.location.href = authUrl;
   };
 
   return (
