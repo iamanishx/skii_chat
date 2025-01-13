@@ -79,9 +79,12 @@ class PeerService extends EventEmitter {
         while (this.pendingCandidates.length) {
           await this.addIceCandidate(this.pendingCandidates.shift());
         }
-      }else {
+      } else if (currentState === 'stable') {
+        console.warn('Peer connection is already stable, ignoring remote description');
+        return;
+      } else {
         console.warn(`Unexpected signaling state: ${currentState}`);
-        // await this.waitForStableState();
+        await this.waitForStableState();
         await this.peer.setRemoteDescription(new RTCSessionDescription(answer));
       }
     } catch (error) {
