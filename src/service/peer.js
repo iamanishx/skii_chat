@@ -1,5 +1,4 @@
-import EventEmitter from 'events'; // For event-based notifications
-
+import EventEmitter from 'events';  
 class PeerService extends EventEmitter {
   constructor() {
     super();
@@ -8,10 +7,10 @@ class PeerService extends EventEmitter {
     this.socket = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 1000; // Initial delay for reconnection (ms)
+    this.reconnectDelay = 1000; 
     this.senders = new Map();
     this.isReconnecting = false;
-    this.pendingCandidates = []; // Initialize pendingCandidates array
+    this.pendingCandidates = []; 
 
   }
 
@@ -251,25 +250,19 @@ class PeerService extends EventEmitter {
         });
       }
     };
-
+    
     this.peer.ontrack = (event) => {
       console.log('Received remote track:', event.track.kind);
       
-      // Create a new MediaStream if it doesn't exist
       if (!this.remoteStream) {
         this.remoteStream = new MediaStream();
       }
-
-      // Add the track to our remote stream
+    
       this.remoteStream.addTrack(event.track);
       
-      // Emit the stream immediately when we get both audio and video
       if (this.remoteStream.getTracks().length >= 2) {
         console.log('Emitting complete remote stream');
-        this.emit('remoteStream', {
-          stream: this.remoteStream,
-          roomId: this.roomId
-        });
+        this.emit('remoteStream', { stream: this.remoteStream });
       }
     };
 

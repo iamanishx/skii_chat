@@ -37,6 +37,30 @@ const RoomPage = () => {
     }
   }, [remoteStream]);
 
+  const validateStream = (stream) => {
+    if (!stream) {
+      console.error("Stream is null or undefined.");
+      return false;
+    }
+  
+    const videoTracks = stream.getVideoTracks();
+    const audioTracks = stream.getAudioTracks();
+  
+    if (!videoTracks.length && !audioTracks.length) {
+      console.error("Stream does not contain any valid tracks.");
+      return false;
+    }
+  
+    if (videoTracks.length && !videoTracks[0].enabled) {
+      console.warn("Video track is present but disabled.");
+    }
+  
+    if (audioTracks.length && !audioTracks[0].enabled) {
+      console.warn("Audio track is present but disabled.");
+    }
+  
+    return true;
+  };
 
   // Initialize room and socket connection
   useEffect(() => {
@@ -53,15 +77,19 @@ const RoomPage = () => {
     };
   }, [socket, room]);
 
-  // Initialize local stream with error handling
   const initializeLocalStream = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: true,
       });
-      setMyStream(stream);
-      return stream;
+  
+      if (validateStream(stream)) {
+        setMyStream(stream);
+        return stream;
+      } else {
+        throw new Error("Invalid local stream.");
+      }
     } catch (error) {
       console.error("Error accessing media devices:", error);
       setError("Failed to access camera and microphone. Please check your permissions.");
@@ -141,18 +169,45 @@ const RoomPage = () => {
   }, [cleanupStreams]);
 
   useEffect(() => {
-    const handleRemoteStream = ({ stream }) => {
-      console.log("Received remote stream, tracks:", stream.getTracks().map(t => t.kind));
-      setRemoteStream(stream);
+    const handleRemoteStream = (event) => {
+      if (event.stream) {
+        setRemoteStream(event.stream);
+        
+        if (remoteVideoRef.current) {
+          const videoElement = remoteVideoRef.current;
+          
+          // Reset the video element completely
+          videoElement.srcObject = null;
+          
+          // Slight delay to ensure clean state
+          setTimeout(() => {
+            videoElement.srcObject = event.stream;
+            
+            // More robust play method
+            const attemptPlay = () => {
+              videoElement.play()
+                .catch(error => {
+                  console.error("Video play error:", error);
+                  if (error.name === 'AbortError') {
+                    // If aborted, try again after a short delay
+                    setTimeout(attemptPlay, 100);
+                  }
+                });
+            };
+            
+            attemptPlay();
+          }, 50);
+        }
+      }
     };
-
+  
     PeerService.on('remoteStream', handleRemoteStream);
-
+  
     return () => {
       PeerService.off('remoteStream', handleRemoteStream);
     };
   }, []);
-
+  
   // Setup PeerService event listeners
   useEffect(() => {
     const handlePeerError = ({ type, message }) => {
