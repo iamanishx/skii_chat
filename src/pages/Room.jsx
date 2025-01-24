@@ -19,6 +19,8 @@ const RoomPage = () => {
   const [error, setError] = useState(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const [isStreamReady, setIsStreamReady] = useState(false);
+
 
 
 
@@ -172,32 +174,7 @@ const RoomPage = () => {
     const handleRemoteStream = (event) => {
       if (event.stream) {
         setRemoteStream(event.stream);
-        
-        if (remoteVideoRef.current) {
-          const videoElement = remoteVideoRef.current;
-          
-          // Reset the video element completely
-          videoElement.srcObject = null;
-          
-          // Slight delay to ensure clean state
-          setTimeout(() => {
-            videoElement.srcObject = event.stream;
-            
-            // More robust play method
-            const attemptPlay = () => {
-              videoElement.play()
-                .catch(error => {
-                  console.error("Video play error:", error);
-                  if (error.name === 'AbortError') {
-                    // If aborted, try again after a short delay
-                    setTimeout(attemptPlay, 100);
-                  }
-                });
-            };
-            
-            attemptPlay();
-          }, 50);
-        }
+        setIsStreamReady(true);
       }
     };
   
@@ -207,6 +184,45 @@ const RoomPage = () => {
       PeerService.off('remoteStream', handleRemoteStream);
     };
   }, []);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream && isStreamReady) {
+      const videoElement = remoteVideoRef.current;
+      
+      // Reset video state
+      videoElement.pause();
+      videoElement.srcObject = null;
+
+      // Use a microtask to ensure clean state
+      Promise.resolve().then(() => {
+        videoElement.srcObject = remoteStream;
+        
+        const playWithRetry = (maxAttempts = 3) => {
+          let attempts = 0;
+          
+          const attemptPlay = () => {
+            attempts++;
+            
+            videoElement.play()
+              .catch(error => {
+                console.warn(`Video play attempt ${attempts} failed:`, error);
+                
+                if (attempts < maxAttempts && error.name === 'AbortError') {
+                  // Wait a bit before retrying
+                  setTimeout(attemptPlay, 100);
+                } else {
+                  console.error('Failed to play remote video after multiple attempts');
+                }
+              });
+          };
+          
+          attemptPlay();
+        };
+
+        playWithRetry();
+      });
+    }
+  }, [remoteStream, isStreamReady]);
   
   // Setup PeerService event listeners
   useEffect(() => {
