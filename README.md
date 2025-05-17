@@ -14,6 +14,6 @@ Welcome to the **P2P Video Call App**, a sleek and secure platform designed for 
 3. **Enjoy**: Your personal, high-quality video call is ready!  
 
 ## 🛠️ Tech Stack  
-- **Backend**: Go  
+- **Backend**: Node.js  
 - **Frontend**: React  
 - **Protocol**: WebRTC for real-time peer-to-peer communication  
