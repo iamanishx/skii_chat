@@ -1,4 +1,4 @@
-import EventEmitter from 'events';  
+import EventEmitter from 'events';
 class PeerService extends EventEmitter {
   constructor() {
     super();
@@ -7,10 +7,10 @@ class PeerService extends EventEmitter {
     this.socket = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 1000; 
+    this.reconnectDelay = 1000;
     this.senders = new Map();
     this.isReconnecting = false;
-    this.pendingCandidates = []; 
+    this.pendingCandidates = [];
 
   }
 
@@ -38,10 +38,10 @@ class PeerService extends EventEmitter {
       }
     } catch (error) {
       console.error('Error adding ICE candidate:', error);
-      this.emit('error', { 
-        type: 'ice-candidate', 
-        message: 'Error adding ICE candidate', 
-        error 
+      this.emit('error', {
+        type: 'ice-candidate',
+        message: 'Error adding ICE candidate',
+        error
       });
     }
   }
@@ -62,7 +62,7 @@ class PeerService extends EventEmitter {
       await this.handleConnectionFailure();
     }
   }
-  
+
   async createAnswer(offer) {
     if (!this.peer) throw new Error('No peer connection available');
     try {
@@ -91,24 +91,23 @@ class PeerService extends EventEmitter {
       const currentState = this.peer.signalingState;
       console.log('Current signaling state:', currentState);
 
-      // Only proceed if we're in a valid state to set remote description
+      // Only proceed if we're in a valid state
       if (['stable', 'have-local-offer'].includes(currentState)) {
-        if (currentState === 'stable') {
-          // If we're stable, we need to set local description first
-          const offer = await this.createOffer();
-          await this.peer.setLocalDescription(offer);
-        }
+        // Remove any extra createOffer calls here:
+        // if (currentState === 'stable') {
+        //   ...
+        // }
 
         await this.peer.setRemoteDescription(new RTCSessionDescription(answer));
         console.log('Remote description set successfully');
 
-        // Process any pending ICE candidates
-        while (this.pendingCandidates.length > 0) {
+        // Apply any stored ICE candidates
+        while (this.pendingCandidates.length) {
           const candidate = this.pendingCandidates.shift();
           await this.addIceCandidate(candidate);
         }
       } else {
-        console.warn(`Invalid signaling state for setting remote description: ${currentState}`);
+        console.warn(`Invalid signaling state: ${currentState}`);
         throw new Error(`Invalid signaling state: ${currentState}`);
       }
     } catch (error) {
@@ -171,7 +170,7 @@ class PeerService extends EventEmitter {
       throw error;
     }
   }
-  
+
   async initializeWithTurn() {
     try {
       const response = await fetch(import.meta.env.VITE_CRED, {
@@ -179,24 +178,24 @@ class PeerService extends EventEmitter {
           'Accept': 'application/json'
         }
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Failed to fetch TURN credentials: ${response.status} ${response.statusText}\n${errorText}`);
       }
-  
+
       let credentials;
       try {
         credentials = await response.json();
       } catch (e) {
         throw new Error(`Invalid JSON response from TURN server: ${await response.text()}`);
       }
-  
+
       // Validate Cloudflare credentials format
       if (!credentials?.urls?.length || !credentials.username || !credentials.credential) {
         throw new Error('Invalid Cloudflare TURN credentials format');
       }
-  
+
       // Create config with Cloudflare credentials
       const config = {
         iceServers: [
@@ -211,7 +210,7 @@ class PeerService extends EventEmitter {
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require'
       };
-  
+
       await this.createPeerConnection(config);
       console.log('TURN-based peer connection initialized successfully with Cloudflare.');
     } catch (error) {
@@ -224,20 +223,20 @@ class PeerService extends EventEmitter {
       throw error;
     }
   }
-  
+
   async createPeerConnection(config) {
     if (!config?.iceServers?.length) {
       throw new Error('Invalid configuration: iceServers array is required');
     }
-  
+
     // Log the configuration for debugging
     console.log('Creating peer connection with config:', JSON.stringify(config, null, 2));
-  
+
     this.peer = new RTCPeerConnection(config);
     this.setupPeerEvents();
   }
 
-  
+
   setupPeerEvents() {
     if (!this.peer) return;
 
@@ -250,19 +249,28 @@ class PeerService extends EventEmitter {
         });
       }
     };
-    
+
     this.peer.ontrack = (event) => {
-      console.log('Received remote track:', event.track.kind);
-      
-      if (!this.remoteStream) {
-        this.remoteStream = new MediaStream();
+      // Clear this cache when setting up new peer
+      if (!this._remoteTrackIds) {
+        this._remoteTrackIds = new Set();
       }
-    
-      this.remoteStream.addTrack(event.track);
-      
-      if (this.remoteStream.getTracks().length >= 2) {
-        console.log('Emitting complete remote stream');
-        this.emit('remoteStream', { stream: this.remoteStream });
+
+      // Check if we've seen this track before to prevent duplicates
+      if (event.track && !this._remoteTrackIds.has(event.track.id)) {
+        console.log(`Received remote track: ${event.track.kind} with ID: ${event.track.id}`);
+        this._remoteTrackIds.add(event.track.id);
+
+        // Only emit remote stream once we have both audio and video
+        const stream = event.streams[0];
+        if (stream) {
+          console.log(`Emitting complete remote stream with ID: ${stream.id}`);
+
+          // Wait briefly to ensure all tracks are added to the stream
+          setTimeout(() => {
+            this.emit('remoteStream', { stream });
+          }, 100);
+        }
       }
     };
 
@@ -335,7 +343,7 @@ class PeerService extends EventEmitter {
       // Add new tracks
       const tracks = stream.getTracks();
       console.log(`Adding ${tracks} tracks to peer connection`);
-      
+
       tracks.forEach((track) => {
         console.log('Adding track:', track.kind);
         try {

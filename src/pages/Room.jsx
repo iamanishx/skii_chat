@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState,useRef} from "react";
+import React, { useEffect, useCallback, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useSocket } from "../context/SocketProvider";
 import { Check, Mic, MicOff, Video, VideoOff, Phone, PhoneOff, Copy, AlertCircle } from "lucide-react";
@@ -26,41 +26,99 @@ const RoomPage = () => {
 
   useEffect(() => {
     if (localVideoRef.current && myStream) {
-      localVideoRef.current.srcObject = myStream;
+      const videoElement = localVideoRef.current;
+
+      if (videoElement.srcObject !== myStream) {
+        videoElement.srcObject = myStream;
+
+        // Local video doesn't need retry logic because it's muted
+        videoElement.play().catch(e => {
+          console.error("Error playing local video:", e);
+        });
+      }
     }
   }, [myStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      console.log("Setting remote stream to video element");
-      remoteVideoRef.current.srcObject = remoteStream;
-      // Ensure the video starts playing
-      remoteVideoRef.current.play().catch(e => console.error("Error playing remote video:", e));
+  if (remoteVideoRef.current && remoteStream) {
+    console.log("Setting remote stream to video element", remoteStream);
+    
+    // Store this flag to prevent duplicate play attempts
+    if (remoteVideoRef.current._isPlayAttemptInProgress) {
+      console.log("Play attempt already in progress, skipping");
+      return;
     }
-  }, [remoteStream]);
+
+    // Check if the stream has video tracks
+    const videoTracks = remoteStream.getVideoTracks();
+    const audioTracks = remoteStream.getAudioTracks();
+    console.log(`Remote stream has ${videoTracks.length} video tracks and ${audioTracks.length} audio tracks`);
+    
+    // Only proceed if we have video tracks
+    if (videoTracks.length === 0) {
+      console.warn("Remote stream has no video tracks, waiting...");
+      // Don't update srcObject yet
+      return;
+    }
+    
+    // Set srcObject
+    remoteVideoRef.current.srcObject = remoteStream;
+    
+    // Define a recursive function to attempt playback with retries
+    const attemptPlay = (attempt = 1) => {
+      console.log(`Attempting to play remote video (attempt ${attempt})...`);
+      
+      // Mark that we're attempting to play
+      remoteVideoRef.current._isPlayAttemptInProgress = true;
+      
+      const playPromise = remoteVideoRef.current.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          console.log("✅ Remote video playing successfully!");
+          remoteVideoRef.current._isPlayAttemptInProgress = false;
+        }).catch(error => {
+          console.error(`❌ Error playing remote video (attempt ${attempt}):`, error);
+          
+          if (attempt < 5) {
+            const delay = Math.min(attempt * 1000, 5000);
+            console.log(`Retrying playback in ${delay}ms...`);
+            setTimeout(() => attemptPlay(attempt + 1), delay);
+          } else {
+            console.error("Maximum playback attempts reached");
+            remoteVideoRef.current._isPlayAttemptInProgress = false;
+          }
+        });
+      }
+    };
+    
+    // Start playback with a small delay to ensure the stream is ready
+    setTimeout(attemptPlay, 1000);
+  }
+}, [remoteStream]);
 
   const validateStream = (stream) => {
     if (!stream) {
       console.error("Stream is null or undefined.");
       return false;
     }
-  
+
     const videoTracks = stream.getVideoTracks();
     const audioTracks = stream.getAudioTracks();
-  
+
     if (!videoTracks.length && !audioTracks.length) {
       console.error("Stream does not contain any valid tracks.");
       return false;
     }
-  
+
     if (videoTracks.length && !videoTracks[0].enabled) {
       console.warn("Video track is present but disabled.");
     }
-  
+
     if (audioTracks.length && !audioTracks[0].enabled) {
       console.warn("Audio track is present but disabled.");
     }
-  
+
     return true;
   };
 
@@ -72,7 +130,7 @@ const RoomPage = () => {
       PeerService.setSocket(socket);
       setRoomLink(`${window.location}`);
     }
-    
+
     // Cleanup function
     return () => {
       cleanupStreams();
@@ -85,7 +143,7 @@ const RoomPage = () => {
         audio: true,
         video: true,
       });
-  
+
       if (validateStream(stream)) {
         setMyStream(stream);
         return stream;
@@ -170,60 +228,8 @@ const RoomPage = () => {
     }
   }, [cleanupStreams]);
 
-  useEffect(() => {
-    const handleRemoteStream = (event) => {
-      if (event.stream) {
-        setRemoteStream(event.stream);
-        setIsStreamReady(true);
-      }
-    };
-  
-    PeerService.on('remoteStream', handleRemoteStream);
-  
-    return () => {
-      PeerService.off('remoteStream', handleRemoteStream);
-    };
-  }, []);
 
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStream && isStreamReady) {
-      const videoElement = remoteVideoRef.current;
-      
-      // Reset video state
-      videoElement.pause();
-      videoElement.srcObject = null;
 
-      // Use a microtask to ensure clean state
-      Promise.resolve().then(() => {
-        videoElement.srcObject = remoteStream;
-        
-        const playWithRetry = (maxAttempts = 3) => {
-          let attempts = 0;
-          
-          const attemptPlay = () => {
-            attempts++;
-            
-            videoElement.play()
-              .catch(error => {
-                console.warn(`Video play attempt ${attempts} failed:`, error);
-                
-                if (attempts < maxAttempts && error.name === 'AbortError') {
-                  // Wait a bit before retrying
-                  setTimeout(attemptPlay, 100);
-                } else {
-                  console.error('Failed to play remote video after multiple attempts');
-                }
-              });
-          };
-          
-          attemptPlay();
-        };
-
-        playWithRetry();
-      });
-    }
-  }, [remoteStream, isStreamReady]);
-  
   // Setup PeerService event listeners
   useEffect(() => {
     const handlePeerError = ({ type, message }) => {
@@ -232,7 +238,21 @@ const RoomPage = () => {
     };
 
     const handleRemoteStream = ({ stream }) => {
+      console.log("Remote stream received from peer", stream);
+      // Log detailed stream info
+      if (stream) {
+        const videoTracks = stream.getVideoTracks();
+        const audioTracks = stream.getAudioTracks();
+        console.log("Remote stream details:", {
+          id: stream.id,
+          videoTracks: videoTracks.length,
+          audioTracks: audioTracks.length,
+          videoActive: videoTracks.length > 0 ? videoTracks[0].enabled : false,
+          audioActive: audioTracks.length > 0 ? audioTracks[0].enabled : false
+        });
+      }
       setRemoteStream(stream);
+      setIsStreamReady(true);
     };
 
     PeerService.on('error', handlePeerError);
@@ -350,37 +370,41 @@ const RoomPage = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {myStream && (
-          <div className="relative">
-            <h2 className="text-lg font-semibold mb-2">Your Video</h2>
-            <video
-              ref={localVideoRef}
-              className="rounded-lg bg-gray-900 w-full"
-              height="300"
-              autoPlay
-              playsInline
-              muted
-            />
+            {myStream && (
+              <div className="relative">
+                <h2 className="text-lg font-semibold mb-2">Your Video</h2>
+                <video
+                  ref={localVideoRef}
+                  className="rounded-lg bg-gray-900 w-full"
+                  height="300"
+                  autoPlay
+                  playsInline
+                  muted
+                />
+              </div>
+            )}
+            {remoteStream && (
+              <div className="relative">
+                <h2 className="text-lg font-semibold mb-2">Remote Video</h2>
+                <video
+                  ref={remoteVideoRef}
+                  className="rounded-lg bg-gray-900 w-full"
+                  autoPlay
+                  playsInline
+                  muted={false}
+                  style={{
+                    border: '3px solid red',
+                    minHeight: '240px'
+                  }}
+                />
+              </div>
+            )}
           </div>
-        )}
-        {remoteStream && (
-          <div className="relative">
-            <h2 className="text-lg font-semibold mb-2">Remote Video</h2>
-            <video
-              ref={remoteVideoRef}
-              className="rounded-lg bg-gray-900 w-full"
-              height="300"
-              autoPlay
-              playsInline
-            />
-          </div>
-        )}
-      </div>
         </div>
 
         <div className="mt-4 text-center text-gray-600">
-          {remoteSocketId ? 
-            <p>Connected with peer</p> : 
+          {remoteSocketId ?
+            <p>Connected with peer</p> :
             <p>Waiting for someone to join...</p>
           }
         </div>
