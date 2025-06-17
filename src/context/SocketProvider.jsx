@@ -21,23 +21,23 @@ export const SocketProvider = (props) => {
     });
 
     // Handle incoming call with room context
-    s.on("incoming:call", async ({ from, offer, room }) => {
-      console.log(`Incoming call in room ${room} from:`, from);
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: true
-        });
+    // s.on("incoming:call", async ({ from, offer, room }) => {
+    //   console.log(`Incoming call in room ${room} from:`, from);
+    //   try {
+    //     const stream = await navigator.mediaDevices.getUserMedia({
+    //       audio: true,
+    //       video: true
+    //     });
         
-        await PeerService.initializePeer(room);
-        await PeerService.addTracks(stream);
-        const answer = await PeerService.createAnswer(offer);
+    //     await PeerService.initializePeer(room);
+    //     await PeerService.addTracks(stream);
+    //     const answer = await PeerService.createAnswer(offer);
         
-        s.emit("call:accepted", { to: from, answer, room });
-      } catch (error) {
-        console.error("Error handling incoming call:", error);
-      }
-    });
+    //     s.emit("call:accepted", { to: from, answer, room });
+    //   } catch (error) {
+    //     console.error("Error handling incoming call:", error);
+    //   }
+    // });
 
     // Handle call acceptance
     s.on("call:accepted", async ({ answer, room }) => {
