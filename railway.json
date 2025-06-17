@@ -1,0 +1,4 @@
+{
+  "build": "yarn run build",
+  "start": "npx serve -s dist"
+}
