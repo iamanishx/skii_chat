@@ -15,32 +15,18 @@ export const SocketProvider = (props) => {
   
   const socket = useMemo(() => {
     const s = io(socketUrl);
-    
-    // Only basic connection logging here
-    s.on("connect", () => {
+        s.on("connect", () => {
       console.log("🔌 Socket connected:", s.id);
     });
     
     s.on("disconnect", () => {
       console.log("🔌 Socket disconnected");
     });
-
-    // Handle room join event - keep this for logging
     s.on("user:joined", ({ id, room, email }) => {
       console.log(`New user joined room ${room} with ID:`, id);
     });
-
-    // REMOVE ALL THESE DUPLICATE HANDLERS:
-    // - incoming:call (Room.jsx handles this)
-    // - call:accepted (Room.jsx handles this) 
-    // - peer:nego:needed (not used)
-    // - peer:nego:final (not used)
-    // - call:ended (Room.jsx handles this)
-
     return s;
   }, [socketUrl]);
-
-  // Set socket reference for PeerService
   PeerService.setSocket(socket);
 
   return (
