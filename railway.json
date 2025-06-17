@@ -1,4 +1,10 @@
 {
-  "build": "yarn run build",
-  "start": "npx serve -s dist"
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm run build",
+    "startCommand": "npx serve -s dist"
+  },
+  "envVars": {
+    "NODE_VERSION": "20"
+  }
 }
