@@ -199,20 +199,15 @@ const RoomPage = () => {
   }, [roomLink]);
 
   // Effects
-
   // Initialize room connection
   useEffect(() => {
   if (socket && room) {
     console.log(`🏠 Joining room: ${room}`);
-    
-    // Get email from localStorage or use a default
     const email = localStorage.getItem('userEmail') || `user-${Date.now()}@example.com`;
-    
-    socket.emit("room:join", { room, email }); // Add email here!
+    socket.emit("room:join", { room, email }); 
     PeerService.setSocket(socket);
     setRoomLink(window.location.href);
   }
-
   return () => {
     console.log("🧹 Component unmounting, cleaning up");
     cleanupStreams();

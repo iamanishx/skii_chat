@@ -5,13 +5,12 @@ import { useSocket } from "../context/SocketProvider";
 const Home = () => {
   const [email, setEmail] = useState(""); 
   const [room, setRoom] = useState(""); 
-  const [manualRoom, setManualRoom] = useState(""); // Room ID entered manually by the user
-  const [view, setView] = useState("create"); // Toggle between Create and Join views
+  const [manualRoom, setManualRoom] = useState(""); 
+  const [view, setView] = useState("create");
 
   const socket = useSocket();
   const navigate = useNavigate();
 
-  // Fetch email from the backend when the component mounts
   useEffect(() => {
     const fetchEmail = async () => {
       try {
