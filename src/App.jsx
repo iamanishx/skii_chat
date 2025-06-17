@@ -14,7 +14,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Login />} />
           <Route path="/home" element={<Home />} />
-          <Route path="/room/:id" element={<RoomPage/>} />
+          <Route path="/room/:room" element={<RoomPage/>} />
         </Routes>
       </Router>
     </SocketProvider>

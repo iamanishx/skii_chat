@@ -31,18 +31,19 @@ class PeerService extends EventEmitter {
   }
 
   setupSocketEvents() {
-    if (!this.socket) return;
+  if (!this.socket) return;
 
-    // Clean up existing listeners first
-    this.socket.off("peer:ice-candidate");
+  // Clean up existing listeners first
+  this.socket.off("peer:ice-candidate");
 
-    // Set up ICE candidate handling
-    this.socket.on("peer:ice-candidate", ({ candidate }) => {
-      if (candidate && this.peer) {
-        this.addIceCandidate(candidate);
-      }
-    });
-  }
+  // FIXED: Handle the correct event structure from server
+  this.socket.on("peer:ice-candidate", ({ candidate, from, room }) => {
+    console.log(`📥 Received ICE candidate from ${from} in room ${room}`);
+    if (candidate && this.peer && room === this.roomId) {
+      this.addIceCandidate(candidate);
+    }
+  });
+}
 
   // ICE Candidate Management
   async addIceCandidate(candidate) {
@@ -279,6 +280,7 @@ class PeerService extends EventEmitter {
             credential: credentials.credential,
           },
         ],
+        iceTransportPolicy: "relay", // Add this line
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
         rtcpMuxPolicy: "require",
