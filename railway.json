@@ -1,4 +1,7 @@
 {
-  "build": "yarn run build",
-  "start": "npx serve -s dist"
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "yarn run build",
+    "startCommand": "npx serve -s dist"
+  }
 }
