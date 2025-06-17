@@ -280,7 +280,6 @@ class PeerService extends EventEmitter {
             credential: credentials.credential,
           },
         ],
-        iceTransportPolicy: "relay", // Add this line
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
         rtcpMuxPolicy: "require",
