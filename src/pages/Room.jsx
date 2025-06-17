@@ -1,13 +1,26 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useSocket } from "../context/SocketProvider";
-import { Check, Mic, MicOff, Video, VideoOff, Phone, PhoneOff, Copy, AlertCircle } from "lucide-react";
+import { 
+  Check, 
+  Mic, 
+  MicOff, 
+  Video, 
+  VideoOff, 
+  Phone, 
+  PhoneOff, 
+  Copy, 
+  AlertCircle 
+} from "lucide-react";
 import { Alert, AlertDescription } from "../assets/ui/alert";
 import PeerService from "../service/peer";
 
 const RoomPage = () => {
+  // Hooks
   const socket = useSocket();
   const { room } = useParams();
+  
+  // State
   const [remoteSocketId, setRemoteSocketId] = useState(null);
   const [myStream, setMyStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -17,80 +30,14 @@ const RoomPage = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [isCallInProgress, setIsCallInProgress] = useState(false);
   const [error, setError] = useState(null);
+  const [iceConnectionState, setIceConnectionState] = useState('new');
+  
+  // Refs
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const [isStreamReady, setIsStreamReady] = useState(false);
-const [iceConnectionState, setIceConnectionState] = useState('new');
 
-
-
-
-  useEffect(() => {
-    if (localVideoRef.current && myStream) {
-      const videoElement = localVideoRef.current;
-
-      if (videoElement.srcObject !== myStream) {
-        videoElement.srcObject = myStream;
-
-        // Local video doesn't need retry logic because it's muted
-        videoElement.play().catch(e => {
-          console.error("Error playing local video:", e);
-        });
-      }
-    }
-  }, [myStream]);
-
-  useEffect(() => {
-  if (!remoteVideoRef.current || !remoteStream) return;
-  
-  console.log("🎥 Setting up remote video", remoteStream.id, "active:", remoteStream.active);
-  
-  const videoElement = remoteVideoRef.current;
-  
-  // Only set srcObject if different
-  if (videoElement.srcObject !== remoteStream) {
-    videoElement.srcObject = remoteStream;
-  }
-  
-  // Wait for ICE connection before attempting play
-  const handleICEConnected = () => {
-    console.log("🟢 ICE connected, attempting video play");
-    attemptVideoPlay();
-  };
-  
-  const attemptVideoPlay = () => {
-    // Simple, direct play attempt
-    videoElement.play()
-      .then(() => {
-        console.log("✅ Remote video playing successfully!");
-      })
-      .catch(error => {
-        console.error("❌ Video play failed:", error.name, error.message);
-        
-        // Enable controls as fallback
-        videoElement.controls = true;
-        videoElement.muted = true;
-        
-        // Try again muted
-        videoElement.play().catch(e => {
-          console.error("❌ Even muted play failed:", e);
-        });
-      });
-  };
-  
-  // Listen for ICE connection
-  PeerService.on('iceConnected', handleICEConnected);
-  
-  // Also try direct play after a delay (fallback)
-  const fallbackTimeout = setTimeout(attemptVideoPlay, 3000);
-  
-  return () => {
-    PeerService.off('iceConnected', handleICEConnected);
-    clearTimeout(fallbackTimeout);
-  };
-}, [remoteStream]);
-
-  const validateStream = (stream) => {
+  // Utility Functions
+  const validateStream = useCallback((stream) => {
     if (!stream) {
       console.error("Stream is null or undefined.");
       return false;
@@ -104,51 +51,15 @@ const [iceConnectionState, setIceConnectionState] = useState('new');
       return false;
     }
 
-    if (videoTracks.length && !videoTracks[0].enabled) {
-      console.warn("Video track is present but disabled.");
-    }
-
-    if (audioTracks.length && !audioTracks[0].enabled) {
-      console.warn("Audio track is present but disabled.");
-    }
-
     return true;
-  };
-  useEffect(() => {
-  const handleICEConnected = () => {
-    setIceConnectionState('connected');
-  };
-  
-  PeerService.on('iceConnected', handleICEConnected);
-  
-  // Existing handlers...
-  
-  return () => {
-    PeerService.off('iceConnected', handleICEConnected);
-    // Existing cleanup...
-  };
-}, []);
+  }, []);
 
-  // Initialize room and socket connection
-  useEffect(() => {
-    if (socket && room) {
-      console.log(`Joining room: ${room}`);
-      socket.emit("room:join", { room });
-      PeerService.setSocket(socket);
-      setRoomLink(`${window.location}`);
-    }
-
-    // Cleanup function
-    return () => {
-      cleanupStreams();
-    };
-  }, [socket, room, cleanupStreams]);
-
+  // Stream Management
   const initializeLocalStream = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: true,
+        video: { width: 1280, height: 720 }
       });
 
       if (validateStream(stream)) {
@@ -162,122 +73,33 @@ const [iceConnectionState, setIceConnectionState] = useState('new');
       setError("Failed to access camera and microphone. Please check your permissions.");
       throw error;
     }
-  }, []);
+  }, [validateStream]);
 
-  // Enhanced cleanup function
   const cleanupStreams = useCallback(() => {
+    console.log("🧹 Cleaning up streams");
+    
     if (myStream) {
-      myStream.getTracks().forEach((track) => track.stop());
+      myStream.getTracks().forEach((track) => {
+        track.stop();
+        console.log(`Stopped ${track.kind} track`);
+      });
+      setMyStream(null);
     }
+    
     PeerService.cleanup();
-    setMyStream(null);
     setRemoteStream(null);
     setIsCallInProgress(false);
-    setError(null);
+    setIceConnectionState('new');
   }, [myStream]);
 
-  // Handle user joined event
-  const handleUserJoined = useCallback(({ id, room: joinedRoom }) => {
-    if (joinedRoom === room) {
-      console.log(`User joined room ${joinedRoom}, socket ID: ${id}`);
-      setRemoteSocketId(id);
-    }
-  }, [room]);
-
-  // Enhanced call handling with proper error management
-  const handleCallUser = useCallback(async () => {
-    try {
-      setError(null);
-      const stream = await initializeLocalStream();
-      await PeerService.initializePeer(room);
-      await PeerService.addTracks(stream);
-      const offer = await PeerService.createOffer();
-      if (offer) {
-        socket.emit("user:call", { to: remoteSocketId, offer, room });
-        setIsCallInProgress(true);
-      }
-    } catch (error) {
-      console.error("Error in handleCallUser:", error);
-      setError("Failed to start call. Please refresh and try again.");
-      cleanupStreams();
-    }
-  }, [remoteSocketId, room, socket, initializeLocalStream, cleanupStreams]);
-
-  // Enhanced incoming call handler
-  const handleIncomingCall = useCallback(async ({ from, offer }) => {
-    try {
-      setError(null);
-      setRemoteSocketId(from);
-      const stream = await initializeLocalStream();
-      await PeerService.cleanup();
-      await PeerService.initializePeer(room);
-      await PeerService.addTracks(stream);
-      const answer = await PeerService.createAnswer(offer);
-      if (answer) {
-        socket.emit("call:accepted", { to: from, answer });
-        setIsCallInProgress(true);
-      }
-    } catch (error) {
-      console.error("Error in handleIncomingCall:", error);
-      setError("Failed to accept call. Please refresh and try again.");
-      cleanupStreams();
-    }
-  }, [socket, room, initializeLocalStream, cleanupStreams]);
-
-  // Handle call accepted with error handling
-  const handleCallAccepted = useCallback(async ({ answer }) => {
-    try {
-      await PeerService.setRemoteDescription(answer);
-    } catch (error) {
-      console.error("Error in handleCallAccepted:", error);
-      setError("Failed to establish connection. Please try again.");
-      cleanupStreams();
-    }
-  }, [cleanupStreams]);
-
-
-
-  // Setup PeerService event listeners
-  useEffect(() => {
-    const handlePeerError = ({ type, message }) => {
-      console.error(`Peer error (${type}):`, message);
-      setError(`Connection error: ${message}`);
-    };
-
-    const handleRemoteStream = ({ stream }) => {
-      console.log("Remote stream received from peer", stream);
-      // Log detailed stream info
-      if (stream) {
-        const videoTracks = stream.getVideoTracks();
-        const audioTracks = stream.getAudioTracks();
-        console.log("Remote stream details:", {
-          id: stream.id,
-          videoTracks: videoTracks.length,
-          audioTracks: audioTracks.length,
-          videoActive: videoTracks.length > 0 ? videoTracks[0].enabled : false,
-          audioActive: audioTracks.length > 0 ? audioTracks[0].enabled : false
-        });
-      }
-      setRemoteStream(stream);
-      setIsStreamReady(true);
-    };
-
-    PeerService.on('error', handlePeerError);
-    PeerService.on('remoteStream', handleRemoteStream);
-
-    return () => {
-      PeerService.off('error', handlePeerError);
-      PeerService.off('remoteStream', handleRemoteStream);
-    };
-  }, []);
-
-  // Enhanced media controls
+  // Media Controls
   const toggleAudio = useCallback(() => {
     if (myStream) {
       const audioTrack = myStream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsAudioEnabled(audioTrack.enabled);
+        console.log(`Audio ${audioTrack.enabled ? 'enabled' : 'disabled'}`);
       }
     }
   }, [myStream]);
@@ -288,34 +110,248 @@ const [iceConnectionState, setIceConnectionState] = useState('new');
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
+        console.log(`Video ${videoTrack.enabled ? 'enabled' : 'disabled'}`);
       }
     }
   }, [myStream]);
 
+  // Call Management
+  const handleCallUser = useCallback(async () => {
+    if (!remoteSocketId) {
+      setError("No peer available to call");
+      return;
+    }
+
+    try {
+      setError(null);
+      console.log("📞 Starting call to:", remoteSocketId);
+      
+      const stream = await initializeLocalStream();
+      await PeerService.initializePeer(room);
+      await PeerService.addTracks(stream);
+      
+      const offer = await PeerService.createOffer();
+      if (offer) {
+        socket.emit("user:call", { to: remoteSocketId, offer, room });
+        setIsCallInProgress(true);
+        console.log("📤 Call offer sent");
+      }
+    } catch (error) {
+      console.error("❌ Error in handleCallUser:", error);
+      setError("Failed to start call. Please try again.");
+      cleanupStreams();
+    }
+  }, [remoteSocketId, room, socket, initializeLocalStream, cleanupStreams]);
+
+  const handleIncomingCall = useCallback(async ({ from, offer }) => {
+    try {
+      setError(null);
+      console.log("📞 Incoming call from:", from);
+      
+      setRemoteSocketId(from);
+      const stream = await initializeLocalStream();
+      
+      await PeerService.cleanup();
+      await PeerService.initializePeer(room);
+      await PeerService.addTracks(stream);
+      
+      const answer = await PeerService.createAnswer(offer);
+      if (answer) {
+        socket.emit("call:accepted", { to: from, answer, room });
+        setIsCallInProgress(true);
+        console.log("✅ Call accepted and answer sent");
+      }
+    } catch (error) {
+      console.error("❌ Error in handleIncomingCall:", error);
+      setError("Failed to accept call. Please try again.");
+      cleanupStreams();
+    }
+  }, [socket, room, initializeLocalStream, cleanupStreams]);
+
+  const handleCallAccepted = useCallback(async ({ answer }) => {
+    try {
+      console.log("✅ Call accepted, setting remote description");
+      await PeerService.setRemoteDescription(answer);
+    } catch (error) {
+      console.error("❌ Error in handleCallAccepted:", error);
+      setError("Failed to establish connection. Please try again.");
+      cleanupStreams();
+    }
+  }, [cleanupStreams]);
+
+  // Socket Event Handlers
+  const handleUserJoined = useCallback(({ id, room: joinedRoom }) => {
+    if (joinedRoom === room) {
+      console.log(`👤 User joined room ${joinedRoom}, socket ID: ${id}`);
+      setRemoteSocketId(id);
+    }
+  }, [room]);
+
+  const handleCallEnded = useCallback(() => {
+    console.log("📱 Call ended");
+    cleanupStreams();
+  }, [cleanupStreams]);
+
+  // UI Helpers
   const copyRoomLink = useCallback(() => {
     navigator.clipboard.writeText(roomLink);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }, [roomLink]);
 
-  // Socket event listeners
+  // Effects
+
+  // Initialize room connection
   useEffect(() => {
-    socket.on("user:joined", handleUserJoined);
-    socket.on("incoming:call", handleIncomingCall);
-    socket.on("call:accepted", handleCallAccepted);
-    socket.on("call:ended", cleanupStreams);
+    if (socket && room) {
+      console.log(`🏠 Joining room: ${room}`);
+      socket.emit("room:join", { room });
+      PeerService.setSocket(socket);
+      setRoomLink(window.location.href);
+    }
 
     return () => {
-      socket.off("user:joined", handleUserJoined);
-      socket.off("incoming:call", handleIncomingCall);
-      socket.off("call:accepted", handleCallAccepted);
-      socket.off("call:ended", cleanupStreams);
+      console.log("🧹 Component unmounting, cleaning up");
+      cleanupStreams();
     };
-  }, [socket, handleUserJoined, handleIncomingCall, handleCallAccepted, cleanupStreams]);
+  }, [socket, room]);
 
+  // Socket event listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    const eventHandlers = {
+      "user:joined": handleUserJoined,
+      "incoming:call": handleIncomingCall,
+      "call:accepted": handleCallAccepted,
+      "call:ended": handleCallEnded
+    };
+
+    // Register event listeners
+    Object.entries(eventHandlers).forEach(([event, handler]) => {
+      socket.on(event, handler);
+    });
+
+    return () => {
+      // Cleanup event listeners
+      Object.entries(eventHandlers).forEach(([event, handler]) => {
+        socket.off(event, handler);
+      });
+    };
+  }, [socket, handleUserJoined, handleIncomingCall, handleCallAccepted, handleCallEnded]);
+
+  // PeerService event listeners
+  useEffect(() => {
+    const handlePeerError = ({ type, message }) => {
+      console.error(`💥 Peer error (${type}):`, message);
+      setError(`Connection error: ${message}`);
+    };
+
+    const handleRemoteStream = ({ stream }) => {
+      console.log("🎥 Remote stream received:", stream.id);
+      
+      if (stream) {
+        const videoTracks = stream.getVideoTracks();
+        const audioTracks = stream.getAudioTracks();
+        
+        console.log("📊 Remote stream details:", {
+          id: stream.id,
+          active: stream.active,
+          videoTracks: videoTracks.length,
+          audioTracks: audioTracks.length,
+          videoEnabled: videoTracks.length > 0 ? videoTracks[0].enabled : false,
+          audioEnabled: audioTracks.length > 0 ? audioTracks[0].enabled : false
+        });
+      }
+      
+      setRemoteStream(stream);
+    };
+
+    const handleICEConnected = () => {
+      console.log("🟢 ICE connection established");
+      setIceConnectionState('connected');
+    };
+
+    const events = [
+      ['error', handlePeerError],
+      ['remoteStream', handleRemoteStream],
+      ['iceConnected', handleICEConnected]
+    ];
+
+    // Register PeerService events
+    events.forEach(([event, handler]) => {
+      PeerService.on(event, handler);
+    });
+
+    return () => {
+      // Cleanup PeerService events
+      events.forEach(([event, handler]) => {
+        PeerService.off(event, handler);
+      });
+    };
+  }, []);
+
+  // Local video setup
+  useEffect(() => {
+    if (localVideoRef.current && myStream) {
+      const videoElement = localVideoRef.current;
+      
+      if (videoElement.srcObject !== myStream) {
+        console.log("📹 Setting up local video");
+        videoElement.srcObject = myStream;
+        
+        videoElement.play().catch(error => {
+          console.error("❌ Error playing local video:", error);
+        });
+      }
+    }
+  }, [myStream]);
+
+  // Remote video setup
+  useEffect(() => {
+    if (!remoteVideoRef.current || !remoteStream) return;
+    
+    const videoElement = remoteVideoRef.current;
+    console.log("🎬 Setting up remote video:", remoteStream.id, "active:", remoteStream.active);
+    
+    // Set srcObject if different
+    if (videoElement.srcObject !== remoteStream) {
+      videoElement.srcObject = remoteStream;
+    }
+    
+    const attemptPlay = () => {
+      videoElement.play()
+        .then(() => {
+          console.log("✅ Remote video playing successfully!");
+        })
+        .catch(error => {
+          console.error("❌ Remote video play failed:", error.name);
+          
+          // Enable controls and mute as fallback
+          videoElement.controls = true;
+          videoElement.muted = true;
+          
+          // Retry muted
+          videoElement.play().catch(e => {
+            console.error("❌ Even muted remote video failed:", e);
+          });
+        });
+    };
+    
+    // Try to play when ICE is connected, or after delay
+    if (iceConnectionState === 'connected') {
+      attemptPlay();
+    } else {
+      const fallbackTimeout = setTimeout(attemptPlay, 2000);
+      return () => clearTimeout(fallbackTimeout);
+    }
+  }, [remoteStream, iceConnectionState]);
+
+  // Render
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">
+        {/* Error Alert */}
         {error && (
           <Alert variant="destructive" className="mb-4">
             <AlertCircle className="h-4 w-4" />
@@ -323,97 +359,116 @@ const [iceConnectionState, setIceConnectionState] = useState('new');
           </Alert>
         )}
 
-        <div className="flex justify-between items-center mb-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <h1 className="text-2xl font-bold text-gray-800">Video Chat Room</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full md:w-auto">
             <input
               type="text"
               value={roomLink}
               readOnly
-              className="bg-gray-50 px-4 py-2 rounded-lg text-sm w-64"
+              className="bg-gray-50 px-4 py-2 rounded-lg text-sm flex-1 md:w-64"
             />
             <button
               onClick={copyRoomLink}
               className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors"
+              title="Copy room link"
             >
               {isCopied ? <Check size={20} /> : <Copy size={20} />}
             </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-center gap-4">
-            {myStream && (
-              <div className="flex gap-2">
-                <button
-                  onClick={toggleAudio}
-                  className={`p-3 rounded-full ${isAudioEnabled ? "bg-blue-500" : "bg-red-500"} text-white`}
-                >
-                  {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
-                </button>
-                <button
-                  onClick={toggleVideo}
-                  className={`p-3 rounded-full ${isVideoEnabled ? "bg-blue-500" : "bg-red-500"} text-white`}
-                >
-                  {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-                </button>
-                <button
-                  onClick={cleanupStreams}
-                  className="p-3 rounded-full bg-red-500 text-white"
-                >
-                  <PhoneOff size={20} />
-                </button>
-              </div>
-            )}
-            {remoteSocketId && !myStream && (
+        {/* Controls */}
+        <div className="flex justify-center gap-4 mb-6">
+          {myStream && (
+            <div className="flex gap-2">
               <button
-                onClick={handleCallUser}
-                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                onClick={toggleAudio}
+                className={`p-3 rounded-full transition-colors ${
+                  isAudioEnabled ? "bg-blue-500 hover:bg-blue-600" : "bg-red-500 hover:bg-red-600"
+                } text-white`}
+                title={isAudioEnabled ? "Mute microphone" : "Unmute microphone"}
               >
-                <Phone size={20} />
-                Start Call
+                {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
               </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myStream && (
-              <div className="relative">
-                <h2 className="text-lg font-semibold mb-2">Your Video</h2>
-                <video
-                  ref={localVideoRef}
-                  className="rounded-lg bg-gray-900 w-full"
-                  height="300"
-                  autoPlay
-                  playsInline
-                  muted
-                />
-              </div>
-            )}
-            {remoteStream && (
-              <div className="relative">
-                <h2 className="text-lg font-semibold mb-2">Remote Video</h2>
-                <video
-                  ref={remoteVideoRef}
-                  className="rounded-lg bg-gray-900 w-full"
-                  autoPlay
-                  playsInline
-                  muted={false}
-                  style={{
-                    border: '3px solid red',
-                    minHeight: '240px'
-                  }}
-                />
-              </div>
-            )}
-          </div>
+              <button
+                onClick={toggleVideo}
+                className={`p-3 rounded-full transition-colors ${
+                  isVideoEnabled ? "bg-blue-500 hover:bg-blue-600" : "bg-red-500 hover:bg-red-600"
+                } text-white`}
+                title={isVideoEnabled ? "Turn off camera" : "Turn on camera"}
+              >
+                {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
+              </button>
+              <button
+                onClick={cleanupStreams}
+                className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors"
+                title="End call"
+              >
+                <PhoneOff size={20} />
+              </button>
+            </div>
+          )}
+          
+          {remoteSocketId && !myStream && (
+            <button
+              onClick={handleCallUser}
+              disabled={isCallInProgress}
+              className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Phone size={20} />
+              {isCallInProgress ? "Calling..." : "Start Call"}
+            </button>
+          )}
         </div>
 
-        <div className="mt-4 text-center text-gray-600">
-          {remoteSocketId ?
-            <p>Connected with peer</p> :
-            <p>Waiting for someone to join...</p>
-          }
+        {/* Video Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {myStream && (
+            <div className="relative">
+              <h2 className="text-lg font-semibold mb-2">Your Video</h2>
+              <video
+                ref={localVideoRef}
+                className="rounded-lg bg-gray-900 w-full"
+                height="300"
+                autoPlay
+                playsInline
+                muted
+              />
+            </div>
+          )}
+          
+          {remoteStream && (
+            <div className="relative">
+              <h2 className="text-lg font-semibold mb-2">Remote Video</h2>
+              <video
+                ref={remoteVideoRef}
+                className="rounded-lg bg-gray-900 w-full"
+                autoPlay
+                playsInline
+                muted={false}
+                style={{
+                  minHeight: '240px'
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Status */}
+        <div className="text-center text-gray-600">
+          <div className="flex justify-center items-center gap-4 text-sm">
+            <span>
+              ICE: <span className={`font-bold ${iceConnectionState === 'connected' ? 'text-green-600' : 'text-orange-500'}`}>
+                {iceConnectionState}
+              </span>
+            </span>
+            <span>•</span>
+            <span>
+              {remoteSocketId ? "Connected with peer" : "Waiting for someone to join..."}
+            </span>
+          </div>
         </div>
       </div>
     </div>
