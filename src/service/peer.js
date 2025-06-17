@@ -199,7 +199,7 @@ class PeerService extends EventEmitter {
       // Always use TURN servers for reliable connection
       await this.initializeWithTurn();
     } catch (error) {
-      console.log("🔄 TURN connection failed, trying STUN fallback");
+      console.log("🔄 TURN connection failed, trying STUN fallback", error);
       try {
         await this.initializeWithStun();
       } catch (stunError) {

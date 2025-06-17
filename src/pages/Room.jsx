@@ -111,7 +111,7 @@ const RoomPage = () => {
   }, [myStream]);
 
   // Call Management
-    // In handleIncomingCall:
+  // In handleIncomingCall:
   const handleIncomingCall = useCallback(async ({ from, offer }) => {
     try {
       setError(null);
@@ -122,7 +122,7 @@ const RoomPage = () => {
       
       await PeerService.cleanup();
       await PeerService.initializePeer(room);
-      PeerService.setRemotePeer(from); // Add this line
+      PeerService.setRemotePeer(from); 
       await PeerService.addTracks(stream);
       
       const answer = await PeerService.createAnswer(offer);
@@ -151,7 +151,7 @@ const RoomPage = () => {
       
       const stream = await initializeLocalStream();
       await PeerService.initializePeer(room);
-      PeerService.setRemotePeer(remoteSocketId); // Add this line
+      PeerService.setRemotePeer(remoteSocketId); 
       await PeerService.addTracks(stream);
       
       const offer = await PeerService.createOffer();
@@ -208,7 +208,7 @@ const RoomPage = () => {
     // Get email from localStorage or use a default
     const email = localStorage.getItem('userEmail') || `user-${Date.now()}@example.com`;
     
-    socket.emit("room:join", { room, email }); // Add email here!
+    socket.emit("room:join", { room, email }); 
     PeerService.setSocket(socket);
     setRoomLink(window.location.href);
   }
