@@ -16,11 +16,9 @@ import { Alert, AlertDescription } from "../assets/ui/alert";
 import PeerService from "../service/peer";
 
 const RoomPage = () => {
-  // Hooks
   const socket = useSocket();
   const { room } = useParams();
   
-  // State
   const [remoteSocketId, setRemoteSocketId] = useState(null);
   const [myStream, setMyStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -32,11 +30,9 @@ const RoomPage = () => {
   const [error, setError] = useState(null);
   const [iceConnectionState, setIceConnectionState] = useState('new');
   
-  // Refs
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  // Utility Functions
   const validateStream = useCallback((stream) => {
     if (!stream) {
       console.error("Stream is null or undefined.");
@@ -54,7 +50,6 @@ const RoomPage = () => {
     return true;
   }, []);
 
-  // Stream Management
   const initializeLocalStream = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -116,33 +111,7 @@ const RoomPage = () => {
   }, [myStream]);
 
   // Call Management
-  const handleCallUser = useCallback(async () => {
-    if (!remoteSocketId) {
-      setError("No peer available to call");
-      return;
-    }
-
-    try {
-      setError(null);
-      console.log("📞 Starting call to:", remoteSocketId);
-      
-      const stream = await initializeLocalStream();
-      await PeerService.initializePeer(room);
-      await PeerService.addTracks(stream);
-      
-      const offer = await PeerService.createOffer();
-      if (offer) {
-        socket.emit("user:call", { to: remoteSocketId, offer, room });
-        setIsCallInProgress(true);
-        console.log("📤 Call offer sent");
-      }
-    } catch (error) {
-      console.error("❌ Error in handleCallUser:", error);
-      setError("Failed to start call. Please try again.");
-      cleanupStreams();
-    }
-  }, [remoteSocketId, room, socket, initializeLocalStream, cleanupStreams]);
-
+    // In handleIncomingCall:
   const handleIncomingCall = useCallback(async ({ from, offer }) => {
     try {
       setError(null);
@@ -153,6 +122,7 @@ const RoomPage = () => {
       
       await PeerService.cleanup();
       await PeerService.initializePeer(room);
+      PeerService.setRemotePeer(from); // Add this line
       await PeerService.addTracks(stream);
       
       const answer = await PeerService.createAnswer(offer);
@@ -167,6 +137,35 @@ const RoomPage = () => {
       cleanupStreams();
     }
   }, [socket, room, initializeLocalStream, cleanupStreams]);
+  
+  // In handleCallUser:
+  const handleCallUser = useCallback(async () => {
+    if (!remoteSocketId) {
+      setError("No peer available to call");
+      return;
+    }
+  
+    try {
+      setError(null);
+      console.log("📞 Starting call to:", remoteSocketId);
+      
+      const stream = await initializeLocalStream();
+      await PeerService.initializePeer(room);
+      PeerService.setRemotePeer(remoteSocketId); // Add this line
+      await PeerService.addTracks(stream);
+      
+      const offer = await PeerService.createOffer();
+      if (offer) {
+        socket.emit("user:call", { to: remoteSocketId, offer, room });
+        setIsCallInProgress(true);
+        console.log("📤 Call offer sent");
+      }
+    } catch (error) {
+      console.error("❌ Error in handleCallUser:", error);
+      setError("Failed to start call. Please try again.");
+      cleanupStreams();
+    }
+  }, [remoteSocketId, room, socket, initializeLocalStream, cleanupStreams]);
 
   const handleCallAccepted = useCallback(async ({ answer }) => {
     try {
@@ -203,18 +202,23 @@ const RoomPage = () => {
 
   // Initialize room connection
   useEffect(() => {
-    if (socket && room) {
-      console.log(`🏠 Joining room: ${room}`);
-      socket.emit("room:join", { room });
-      PeerService.setSocket(socket);
-      setRoomLink(window.location.href);
-    }
+  if (socket && room) {
+    console.log(`🏠 Joining room: ${room}`);
+    
+    // Get email from localStorage or use a default
+    const email = localStorage.getItem('userEmail') || `user-${Date.now()}@example.com`;
+    
+    socket.emit("room:join", { room, email }); // Add email here!
+    PeerService.setSocket(socket);
+    setRoomLink(window.location.href);
+  }
 
-    return () => {
-      console.log("🧹 Component unmounting, cleaning up");
-      cleanupStreams();
-    };
-  }, [socket, room]);
+  return () => {
+    console.log("🧹 Component unmounting, cleaning up");
+    cleanupStreams();
+  };
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [socket, room]);
 
   // Socket event listeners
   useEffect(() => {
