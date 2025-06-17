@@ -255,54 +255,73 @@ class PeerService extends EventEmitter {
     };
 
     this.peer.ontrack = (event) => {
-      // Clear this cache when setting up new peer
-      if (!this._remoteTrackIds) {
-        this._remoteTrackIds = new Set();
-      }
-
-      // Check if we've seen this track before to prevent duplicates
-      if (event.track && !this._remoteTrackIds.has(event.track.id)) {
-        console.log(`Received remote track: ${event.track.kind} with ID: ${event.track.id}`);
-        this._remoteTrackIds.add(event.track.id);
-
-        // Only emit remote stream once we have both audio and video
-        const stream = event.streams[0];
-        if (stream) {
-          console.log(`Emitting complete remote stream with ID: ${stream.id}`);
-
-          // Wait briefly to ensure all tracks are added to the stream
-          setTimeout(() => {
-            this.emit('remoteStream', { stream });
-          }, 100);
-        }
-      }
+  const stream = event.streams[0];
+  if (!stream) return;
+  
+  const streamId = stream.id;
+  
+  // Initialize stream tracking
+  if (!this._streamTracking) {
+    this._streamTracking = new Map();
+  }
+  
+  // Get or create tracking info for this stream
+  let trackingInfo = this._streamTracking.get(streamId);
+  if (!trackingInfo) {
+    trackingInfo = {
+      hasAudio: false,
+      hasVideo: false,
+      emitted: false,
+      timeoutId: null
     };
+    this._streamTracking.set(streamId, trackingInfo);
+  }
+  
+  // Update tracking based on track type
+  if (event.track.kind === 'audio') {
+    trackingInfo.hasAudio = true;
+  } else if (event.track.kind === 'video') {
+    trackingInfo.hasVideo = true;
+  }
+  
+  console.log(`Received ${event.track.kind} track for stream ${streamId}`);
+  
+  // Clear existing timeout
+  if (trackingInfo.timeoutId) {
+    clearTimeout(trackingInfo.timeoutId);
+  }
+  
+  // Only emit once we have both tracks and haven't emitted yet
+  trackingInfo.timeoutId = setTimeout(() => {
+    if (!trackingInfo.emitted && trackingInfo.hasAudio && trackingInfo.hasVideo) {
+      console.log(`Emitting complete remote stream with ID: ${streamId}`);
+      trackingInfo.emitted = true;
+      this.emit('remoteStream', { stream });
+    }
+  }, 500); // Wait longer to ensure both tracks are ready
+};
 
    this.peer.oniceconnectionstatechange = () => {
-    const iceState = this.peer?.iceConnectionState;
-    console.log('ICE connection state changed to:', iceState);
-    
-    if (iceState === 'connected' || iceState === 'completed') {
-      console.log('✅ ICE connection established - media should flow now');
-      this.reconnectAttempts = 0;
-      this.isReconnecting = false;
-    } else if (iceState === 'failed' || iceState === 'disconnected') {
-      console.log('❌ ICE connection failed');
-      this.handleConnectionFailure();
-    }
-  };
+  const iceState = this.peer?.iceConnectionState;
+  console.log('🔵 ICE connection state changed to:', iceState);
+  
+  if (iceState === 'connected' || iceState === 'completed') {
+    console.log('✅ ICE CONNECTED - Media should flow now');
+    this.reconnectAttempts = 0;
+    this.isReconnecting = false;
+    this.emit('iceConnected'); // Add this event
+  } else if (iceState === 'checking') {
+    console.log('🔄 ICE checking candidates...');
+  } else if (iceState === 'failed' || iceState === 'disconnected') {
+    console.log('❌ ICE connection failed/disconnected');
+    this.handleConnectionFailure();
+  }
+};
 
-    this.peer.onconnectionstatechange = () => {
-    const state = this.peer?.connectionState;
-    console.log('Overall connection state changed to:', state);
-    
-    if (state === 'connected') {
-      console.log('✅ Peer connection fully established');
-    } else if (['failed', 'disconnected'].includes(state)) {
-      console.log('❌ Peer connection failed');
-      this.handleConnectionFailure();
-    }
-  };
+ this.peer.onconnectionstatechange = () => {
+  const state = this.peer?.connectionState;
+  console.log('🟡 Overall connection state:', state);
+};
   }
 
 
