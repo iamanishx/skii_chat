@@ -1,4 +1,5 @@
 import EventEmitter from 'events';
+
 class PeerService extends EventEmitter {
   constructor() {
     super();
@@ -45,7 +46,6 @@ class PeerService extends EventEmitter {
       });
     }
   }
-
 
   async createOffer() {
     if (!this.peer) throw new Error('No peer connection available');
@@ -142,34 +142,38 @@ class PeerService extends EventEmitter {
   }
 
   async initializeWithStun() {
-    try {
-      const config = {
-        iceServers: [
-          {
-            urls: [
-              'stun:stun1.l.google.com:19302',
-              'stun:stun2.l.google.com:19302',
-              'stun:stun.stunprotocol.org:3478',
-              'stun:stun.voiparound.com'
-            ]
-          }
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
-      };
-      await this.createPeerConnection(config);
-      console.log('STUN-based peer connection initialized successfully.');
-    } catch (error) {
-      console.error('Error initializing STUN connection:', error);
-      this.emit('error', {
-        type: 'stun',
-        message: 'Failed to initialize STUN connection',
-        error,
-      });
-      throw error;
-    }
+  try {
+    const config = {
+      iceServers: [
+        {
+          urls: [
+            'stun:stun1.l.google.com:19302',
+            'stun:stun2.l.google.com:19302'
+          ]
+        },
+        // Add free TURN servers for NAT traversal
+        {
+          urls: ['turn:openrelay.metered.ca:80'],
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: ['turn:openrelay.metered.ca:443'],
+          username: 'openrelayproject', 
+          credential: 'openrelayproject'
+        }
+      ],
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    };
+    await this.createPeerConnection(config);
+    console.log('Peer connection with TURN initialized successfully.');
+  } catch (error) {
+    console.error('Error initializing connection:', error);
+    throw error;
   }
+}
 
   async initializeWithTurn() {
     try {
@@ -274,27 +278,31 @@ class PeerService extends EventEmitter {
       }
     };
 
+   this.peer.oniceconnectionstatechange = () => {
+    const iceState = this.peer?.iceConnectionState;
+    console.log('ICE connection state changed to:', iceState);
+    
+    if (iceState === 'connected' || iceState === 'completed') {
+      console.log('✅ ICE connection established - media should flow now');
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
+    } else if (iceState === 'failed' || iceState === 'disconnected') {
+      console.log('❌ ICE connection failed');
+      this.handleConnectionFailure();
+    }
+  };
+
     this.peer.onconnectionstatechange = () => {
-      const state = this.peer?.connectionState;
-      console.log('Connection state changed:', state);
-
-      if (state === 'connected') {
-        this.reconnectAttempts = 0;
-        this.isReconnecting = false;
-        console.log('Peer connection established successfully');
-      } else if (['disconnected', 'failed'].includes(state) && !this.isReconnecting) {
-        console.log('Connection state failure:', state);
-        this.handleConnectionFailure();
-      }
-    };
-
-    this.peer.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', this.peer?.iceConnectionState);
-      if (this.peer?.iceConnectionState === 'failed') {
-        console.log('ICE connection failed - attempting recovery');
-        this.handleConnectionFailure();
-      }
-    };
+    const state = this.peer?.connectionState;
+    console.log('Overall connection state changed to:', state);
+    
+    if (state === 'connected') {
+      console.log('✅ Peer connection fully established');
+    } else if (['failed', 'disconnected'].includes(state)) {
+      console.log('❌ Peer connection failed');
+      this.handleConnectionFailure();
+    }
+  };
   }
 
 

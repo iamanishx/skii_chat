@@ -65,32 +65,52 @@ const RoomPage = () => {
     remoteVideoRef.current.srcObject = remoteStream;
     
     // Define a recursive function to attempt playback with retries
-    const attemptPlay = (attempt = 1) => {
-      console.log(`Attempting to play remote video (attempt ${attempt})...`);
+    const attemptPlay = async (attempt = 1) => {
+  console.log(`Attempting to play remote video (attempt ${attempt})...`);
+  
+  try {
+    // Ensure the video element is ready
+    if (remoteVideoRef.current.readyState < 2) {
+      console.log('Video not ready, waiting for loadeddata event...');
       
-      // Mark that we're attempting to play
-      remoteVideoRef.current._isPlayAttemptInProgress = true;
-      
-      const playPromise = remoteVideoRef.current.play();
-      
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          console.log("✅ Remote video playing successfully!");
-          remoteVideoRef.current._isPlayAttemptInProgress = false;
-        }).catch(error => {
-          console.error(`❌ Error playing remote video (attempt ${attempt}):`, error);
-          
+      return new Promise((resolve) => {
+        const onLoadedData = () => {
+          remoteVideoRef.current.removeEventListener('loadeddata', onLoadedData);
+          attemptPlay(attempt).then(resolve);
+        };
+        remoteVideoRef.current.addEventListener('loadeddata', onLoadedData);
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          remoteVideoRef.current.removeEventListener('loadeddata', onLoadedData);
           if (attempt < 5) {
-            const delay = Math.min(attempt * 1000, 5000);
-            console.log(`Retrying playback in ${delay}ms...`);
-            setTimeout(() => attemptPlay(attempt + 1), delay);
-          } else {
-            console.error("Maximum playback attempts reached");
-            remoteVideoRef.current._isPlayAttemptInProgress = false;
+            setTimeout(() => attemptPlay(attempt + 1), 1000);
           }
-        });
-      }
-    };
+        }, 5000);
+      });
+    }
+    
+    await remoteVideoRef.current.play();
+    console.log("✅ Remote video playing successfully!");
+    remoteVideoRef.current._isPlayAttemptInProgress = false;
+    
+  } catch (error) {
+    console.error(`❌ Error playing remote video (attempt ${attempt}):`, error);
+    
+    if (attempt < 5) {
+      const delay = Math.min(attempt * 1000, 5000);
+      console.log(`Retrying playback in ${delay}ms...`);
+      setTimeout(() => attemptPlay(attempt + 1), delay);
+    } else {
+      console.error("Maximum playback attempts reached");
+      remoteVideoRef.current._isPlayAttemptInProgress = false;
+      
+      // Try to enable controls as fallback
+      remoteVideoRef.current.controls = true;
+      remoteVideoRef.current.muted = true; // Mute to allow autoplay
+    }
+  }
+};
     
     // Start playback with a small delay to ensure the stream is ready
     setTimeout(attemptPlay, 1000);
