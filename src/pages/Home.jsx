@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../context/SocketProvider";
 
 const Home = () => {
-  const [email, setEmail] = useState(""); // Email from backend
-  const [room, setRoom] = useState(""); // Auto-generated Room ID
+  const [email, setEmail] = useState(""); 
+  const [room, setRoom] = useState(""); 
   const [manualRoom, setManualRoom] = useState(""); // Room ID entered manually by the user
   const [view, setView] = useState("create"); // Toggle between Create and Join views
 
