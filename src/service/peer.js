@@ -241,56 +241,51 @@ class PeerService extends EventEmitter {
     }
   }
 
-  async initializeWithTurn() {
-    try {
-      console.log("🔄 Fetching TURN credentials...");
+ async initializeWithTurn() {
+  try {
+    console.log("🔄 Fetching Cloudflare TURN credentials...");
 
-      const response = await fetch(import.meta.env.VITE_CRED, {
-        headers: {
-          Accept: "application/json",
-        },
-      });
+    const response = await fetch(import.meta.env.VITE_CRED, {
+      headers: { Accept: "application/json" },
+    });
 
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch TURN credentials: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const credentials = await response.json();
-      if (
-        !credentials?.urls?.length ||
-        !credentials.username ||
-        !credentials.credential
-      ) {
-        throw new Error("Invalid TURN credentials format");
-      }
-
-      const config = {
-        iceServers: [
-          {
-            urls: credentials.urls,
-            username: credentials.username,
-            credential: credentials.credential,
-          },
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-      };
-
-      await this.createPeerConnection(config);
-      console.log("✅ TURN-based peer connection initialized successfully");
-    } catch (error) {
-      console.error("❌ Error initializing TURN connection:", error);
-      this.emit("error", {
-        type: "turn",
-        message: "Failed to initialize TURN connection",
-        error,
-      });
-      throw error;
+    if (!response.ok) {
+      throw new Error(`TURN API error: ${response.status}`);
     }
+
+    const credentials = await response.json();
+    console.log("🔑 Cloudflare credentials received:", credentials);
+
+    const cloudflareUrls = [
+      "turn:turn.cloudflare.com:3478?transport=udp",
+      "turn:turn.cloudflare.com:3478?transport=tcp", 
+      "turns:turn.cloudflare.com:5349?transport=tcp", // TLS for restrictive networks
+      "turn:turn.cloudflare.com:80?transport=tcp",    // Alternate port
+      "turns:turn.cloudflare.com:443?transport=tcp"   // HTTPS port for maximum compatibility
+    ];
+
+    const config = {
+      iceServers: [
+        {
+          urls: cloudflareUrls,
+          username: credentials.username,
+          credential: credentials.credential,
+        },
+      ],
+      iceTransportPolicy: "relay",
+      iceCandidatePoolSize: 10,
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+    };
+
+    console.log("🔧 Cloudflare TURN config:", config);
+    await this.createPeerConnection(config);
+    console.log("✅ Cloudflare TURN connection initialized successfully");
+  } catch (error) {
+    console.error("❌ Cloudflare TURN initialization failed:", error);
+    throw error;
   }
+}
 
   async createPeerConnection(config) {
     if (!config?.iceServers?.length) {
