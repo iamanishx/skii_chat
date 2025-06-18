@@ -227,7 +227,6 @@ const RoomPage = () => {
     });
 
     return () => {
-      // Cleanup event listeners
       Object.entries(eventHandlers).forEach(([event, handler]) => {
         socket.off(event, handler);
       });
@@ -248,20 +247,6 @@ const RoomPage = () => {
   };
 
   const handleRemoteStream = ({ stream }) => {
-    if (stream) {
-      const videoTracks = stream.getVideoTracks();
-      const audioTracks = stream.getAudioTracks();
-
-      console.log("📊 Remote stream details:", {
-        id: stream.id,
-        active: stream.active,
-        videoTracks: videoTracks.length,
-        audioTracks: audioTracks.length,
-        videoEnabled: videoTracks.length > 0 ? videoTracks[0].enabled : false,
-        audioEnabled: audioTracks.length > 0 ? audioTracks[0].enabled : false,
-      });
-    }
-
     setRemoteStream(stream);
   };
 
@@ -292,20 +277,17 @@ const RoomPage = () => {
     ["reconnectCall", handleReconnectCall], // ADD THIS LINE
   ];
 
-  // Register PeerService events
   events.forEach(([event, handler]) => {
     PeerService.on(event, handler);
   });
 
   return () => {
-    // Cleanup PeerService events
     events.forEach(([event, handler]) => {
       PeerService.off(event, handler);
     });
   };
 }, [remoteSocketId, myStream, socket, room]);
 
-  // Local video setup
   useEffect(() => {
     if (localVideoRef.current && myStream) {
       const videoElement = localVideoRef.current;
@@ -320,12 +302,10 @@ const RoomPage = () => {
     }
   }, [myStream]);
 
-  // Remote video setup
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
 
     const videoElement = remoteVideoRef.current;  
-    // Set srcObject if different
     if (videoElement.srcObject !== remoteStream) {
       videoElement.srcObject = remoteStream;
     }
@@ -348,7 +328,6 @@ const RoomPage = () => {
         });
     };
 
-    // Try to play when ICE is connected, or after delay
     if (iceConnectionState === "connected") {
       attemptPlay();
     } else {
@@ -357,7 +336,6 @@ const RoomPage = () => {
     }
   }, [remoteStream, iceConnectionState]);
 
-  // Render
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">

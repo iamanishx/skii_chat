@@ -4,7 +4,6 @@ import PeerService from "../service/peer";
 
 const SocketContext = createContext(null);
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const useSocket = () => {
   const socket = useContext(SocketContext);
   return socket;
