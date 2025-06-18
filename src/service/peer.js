@@ -211,6 +211,12 @@ class PeerService extends EventEmitter {
             ],
           },
           {
+            urls: ["relay1.expressturn.com:3480"],
+            username: "efPVTROUWWJ55A39IT",
+            credential: "yP21Uvqy20rU7Zgj",
+
+          },
+          {
             urls: ["turn:openrelay.metered.ca:80"],
             username: "openrelayproject",
             credential: "openrelayproject",
@@ -349,7 +355,7 @@ class PeerService extends EventEmitter {
             console.log("⏰ ICE checking timeout - trying fallback");
             this.handleConnectionFailure();
           }
-        }, 5000);
+        }, 10000);
         break;
       case "failed":
         console.log("❌ ICE connection failed");

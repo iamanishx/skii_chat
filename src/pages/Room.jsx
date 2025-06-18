@@ -293,7 +293,6 @@ const RoomPage = () => {
     setIceConnectionState("connected");
   };
 
-  // ADD THIS RECONNECTION HANDLER
   const handleReconnectCall = async () => {
     console.log("🔄 Handling call reconnection");
     if (remoteSocketId && myStream) {
