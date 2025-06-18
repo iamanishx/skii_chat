@@ -266,12 +266,19 @@ class PeerService extends EventEmitter {
 
       const credentials = await response.json();
       console.log("🔍 Cloudflare TURN Debug:", {
-        rawResponse: credentials,
-        urlsArray: credentials.urls,
-        urlsType: typeof credentials.urls,
-        firstUrl: credentials.urls?.[0],
-        hasTransportParams: credentials.urls?.[0]?.includes("transport="),
-      });
+      fullResponse: credentials,
+      urls: credentials.urls,
+      urlCount: credentials.urls?.length,
+      transportTypes: credentials.urls?.map(url => {
+        if (url.includes('transport=udp')) return 'UDP';
+        if (url.includes('transport=tcp')) return 'TCP';  
+        if (url.startsWith('turns:')) return 'TLS';
+        return 'Unknown';
+      }),
+      hasUDP: credentials.urls?.some(url => url.includes('transport=udp')),
+      hasTCP: credentials.urls?.some(url => url.includes('transport=tcp')),
+      hasTLS: credentials.urls?.some(url => url.startsWith('turns:')),
+    });
       if (
         !credentials?.urls?.length ||
         !credentials.username ||
