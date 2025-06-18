@@ -227,6 +227,7 @@ class PeerService extends EventEmitter {
             credential: "openrelayproject",
           },
         ],
+        iceTransportPolicy: "relay", // Force TURN only - for testing
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
         rtcpMuxPolicy: "require",
@@ -510,7 +511,7 @@ class PeerService extends EventEmitter {
         this.emit("reconnectCall");
       }
       
-      console.log("✅ TURN fallback successful");
+      console.log("✅cloudflare TURN fallback successful");
       this.isReconnecting = false;
       return;
     } catch (error) {
@@ -595,8 +596,6 @@ class PeerService extends EventEmitter {
   // Cleanup
   cleanup() {
     console.log("🧹 Cleaning up peer connection");
-
-    // Clear stream tracking
     for (const trackingInfo of this._streamTracking.values()) {
       if (trackingInfo.timeoutId) {
         clearTimeout(trackingInfo.timeoutId);
@@ -604,9 +603,7 @@ class PeerService extends EventEmitter {
     }
     this._streamTracking.clear();
 
-    // Clean up peer connection
     if (this.peer) {
-      // Remove event handlers
       this.peer.ontrack = null;
       this.peer.onicecandidate = null;
       this.peer.oniceconnectionstatechange = null;
@@ -614,12 +611,10 @@ class PeerService extends EventEmitter {
       this.peer.onsignalingstatechange = null;
       this.remotePeerId = null;
 
-      // Close connection
       this.peer.close();
       this.peer = null;
     }
 
-    // Clear other properties
     this.senders.clear();
     this.pendingCandidates.length = 0;
     this.roomId = null;
@@ -627,8 +622,6 @@ class PeerService extends EventEmitter {
     this.isSettingRemoteDescription = false;
     this.reconnectAttempts = 0;
   }
-
-  // Getters for debugging
   get connectionState() {
     return this.peer?.connectionState || "closed";
   }
@@ -642,5 +635,4 @@ class PeerService extends EventEmitter {
   }
 }
 
-// Export singleton instance
 export default new PeerService();
