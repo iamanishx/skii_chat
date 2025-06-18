@@ -31,29 +31,27 @@ class PeerService extends EventEmitter {
   }
 
   setupSocketEvents() {
-  if (!this.socket) return;
+    if (!this.socket) return;
 
-  // Clean up existing listeners first
-  this.socket.off("peer:ice-candidate");
+    // Clean up existing listeners first
+    this.socket.off("peer:ice-candidate");
 
-  // FIXED: Handle the correct event structure from server
-  this.socket.on("peer:ice-candidate", ({ candidate, from, room }) => {
-    console.log(`📥 Received ICE candidate from ${from} in room ${room}`);
-    if (candidate && this.peer && room === this.roomId) {
-      this.addIceCandidate(candidate);
-    }
-  });
-}
+    // FIXED: Handle the correct event structure from server
+    this.socket.on("peer:ice-candidate", ({ candidate, from, room }) => {
+      console.log(`📥 Received ICE candidate from ${from} in room ${room}`);
+      if (candidate && this.peer && room === this.roomId) {
+        this.addIceCandidate(candidate);
+      }
+    });
+  }
 
   // ICE Candidate Management
   async addIceCandidate(candidate) {
     try {
-      // Only add if we have a remote description
       if (this.peer?.remoteDescription && this.peer?.remoteDescription.type) {
         await this.peer.addIceCandidate(new RTCIceCandidate(candidate));
         console.log("✅ Added ICE candidate successfully");
       } else {
-        // Store for later if no remote description yet
         this.pendingCandidates.push(candidate);
         console.log("📦 Stored ICE candidate for later");
       }
@@ -100,7 +98,6 @@ class PeerService extends EventEmitter {
     if (!this.peer) {
       throw new Error("No peer connection available");
     }
-
     try {
       console.log("📥 Creating answer for received offer...");
       await this.peer.setRemoteDescription(new RTCSessionDescription(offer));
@@ -127,13 +124,10 @@ class PeerService extends EventEmitter {
       console.warn("No peer connection available for setRemoteDescription");
       return;
     }
-
-    // Prevent concurrent calls
     if (this.isSettingRemoteDescription) {
       console.log("⏳ Already setting remote description, skipping");
       return;
     }
-
     try {
       this.isSettingRemoteDescription = true;
       const currentState = this.peer.signalingState;
@@ -141,13 +135,10 @@ class PeerService extends EventEmitter {
         "🔄 Setting remote description, current state:",
         currentState
       );
-
-      // Only proceed if in valid state
       if (["stable", "have-local-offer"].includes(currentState)) {
         await this.peer.setRemoteDescription(new RTCSessionDescription(answer));
         console.log("✅ Remote description set successfully");
 
-        // Process any pending ICE candidates
         await this.processPendingCandidates();
       } else {
         const errorMsg = `Invalid signaling state for remote description: ${currentState}`;
@@ -180,14 +171,12 @@ class PeerService extends EventEmitter {
     }
   }
 
-  // Connection Initialization
+
   async initializePeer(roomId) {
     console.log("🚀 Initializing peer connection for room:", roomId);
 
-    // Clean up any existing connection
     this.cleanup();
 
-    // Set up new connection
     this.roomId = roomId;
     this.reconnectAttempts = 0;
     this.isReconnecting = false;
@@ -197,14 +186,13 @@ class PeerService extends EventEmitter {
 
   async initializeConnection() {
     try {
-      // Always use TURN servers for reliable connection
-      await this.initializeWithTurn();
+      await this.initializeWithStun();
     } catch (error) {
-      console.log("🔄 TURN connection failed, trying STUN fallback",error);
+      console.log("🔄 STUN+TURN connection failed, trying cloudflare turn fallback", error);
       try {
-        await this.initializeWithStun();
+      await this.initializeWithTurn();
       } catch (stunError) {
-        console.error("❌ Both TURN and STUN initialization failed");
+        console.error("❌ Both cloudflare TURN and TURN+STUN initialization failed");
         throw stunError;
       }
     }
@@ -220,7 +208,6 @@ class PeerService extends EventEmitter {
               "stun:stun2.l.google.com:19302",
             ],
           },
-          // Free TURN servers for better NAT traversal
           {
             urls: ["turn:openrelay.metered.ca:80"],
             username: "openrelayproject",
@@ -240,7 +227,7 @@ class PeerService extends EventEmitter {
       await this.createPeerConnection(config);
       console.log("✅ Peer connection with STUN+TURN initialized successfully");
     } catch (error) {
-      console.error("❌ Error initializing STUN connection:", error);
+      console.error("❌ Error initializing STUN+TURN connection:", error);
       throw error;
     }
   }
@@ -262,8 +249,6 @@ class PeerService extends EventEmitter {
       }
 
       const credentials = await response.json();
-
-      // Validate credentials format
       if (
         !credentials?.urls?.length ||
         !credentials.username ||
@@ -315,10 +300,9 @@ class PeerService extends EventEmitter {
     this.setupPeerEvents();
   }
   setRemotePeer(peerId) {
-  this.remotePeerId = peerId;
-  console.log("🎯 Set remote peer ID:", peerId);
-}
-
+    this.remotePeerId = peerId;
+    console.log("🎯 Set remote peer ID:", peerId);
+  }
 
   // Event Setup
   setupPeerEvents() {
@@ -326,19 +310,19 @@ class PeerService extends EventEmitter {
 
     // ICE candidate handling
     this.peer.onicecandidate = ({ candidate }) => {
-  if (candidate && this.socket) {
-    console.log("📤 Sending ICE candidate to room:", this.roomId);
-    
-    // Send to the specific peer, not the room
-    if (this.remotePeerId) {
-      this.socket.emit("peer:ice-candidate", {
-        candidate,
-        to: this.remotePeerId, // Send to specific peer
-        room: this.roomId
-      });
-    }
-  }
-};
+      if (candidate && this.socket) {
+        console.log("📤 Sending ICE candidate to room:", this.roomId);
+
+        // Send to the specific peer, not the room
+        if (this.remotePeerId) {
+          this.socket.emit("peer:ice-candidate", {
+            candidate,
+            to: this.remotePeerId, // Send to specific peer
+            room: this.roomId,
+          });
+        }
+      }
+    };
 
     // Track handling with duplicate prevention
     this.peer.ontrack = (event) => {

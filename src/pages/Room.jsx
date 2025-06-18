@@ -125,7 +125,7 @@ const RoomPage = () => {
 
         await PeerService.cleanup();
         await PeerService.initializePeer(room);
-        PeerService.setRemotePeer(from); // Add this line
+        PeerService.setRemotePeer(from); 
         await PeerService.addTracks(stream);
 
         const answer = await PeerService.createAnswer(offer);
@@ -156,7 +156,7 @@ const RoomPage = () => {
 
       const stream = await initializeLocalStream();
       await PeerService.initializePeer(room);
-      PeerService.setRemotePeer(remoteSocketId); // Add this line
+      PeerService.setRemotePeer(remoteSocketId); 
       await PeerService.addTracks(stream);
 
       const offer = await PeerService.createOffer();
@@ -354,11 +354,9 @@ const RoomPage = () => {
         .catch((error) => {
           console.error("❌ Remote video play failed:", error.name);
 
-          // Enable controls and mute as fallback
           videoElement.controls = true;
           videoElement.muted = true;
 
-          // Retry muted
           videoElement.play().catch((e) => {
             console.error("❌ Even muted remote video failed:", e);
           });
