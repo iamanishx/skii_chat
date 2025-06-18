@@ -73,12 +73,9 @@ const RoomPage = () => {
   }, [validateStream]);
 
   const cleanupStreams = useCallback(() => {
-    console.log("🧹 Cleaning up streams");
-
     if (myStream) {
       myStream.getTracks().forEach((track) => {
         track.stop();
-        console.log(`Stopped ${track.kind} track`);
       });
       setMyStream(null);
     }
@@ -96,7 +93,6 @@ const RoomPage = () => {
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsAudioEnabled(audioTrack.enabled);
-        console.log(`Audio ${audioTrack.enabled ? "enabled" : "disabled"}`);
       }
     }
   }, [myStream]);
@@ -107,7 +103,6 @@ const RoomPage = () => {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
-        console.log(`Video ${videoTrack.enabled ? "enabled" : "disabled"}`);
       }
     }
   }, [myStream]);
@@ -118,8 +113,6 @@ const RoomPage = () => {
     async ({ from, offer }) => {
       try {
         setError(null);
-        console.log("📞 Incoming call from:", from);
-
         setRemoteSocketId(from);
         const stream = await initializeLocalStream();
 
@@ -132,7 +125,6 @@ const RoomPage = () => {
         if (answer) {
           socket.emit("call:accepted", { to: from, answer, room });
           setIsCallInProgress(true);
-          console.log("✅ Call accepted and answer sent");
         }
       } catch (error) {
         console.error("❌ Error in handleIncomingCall:", error);
@@ -152,8 +144,6 @@ const RoomPage = () => {
 
     try {
       setError(null);
-      console.log("📞 Starting call to:", remoteSocketId);
-
       const stream = await initializeLocalStream();
       await PeerService.initializePeer(room);
       PeerService.setRemotePeer(remoteSocketId); 
@@ -163,7 +153,6 @@ const RoomPage = () => {
       if (offer) {
         socket.emit("user:call", { to: remoteSocketId, offer, room });
         setIsCallInProgress(true);
-        console.log("📤 Call offer sent");
       }
     } catch (error) {
       console.error("❌ Error in handleCallUser:", error);
@@ -175,7 +164,6 @@ const RoomPage = () => {
   const handleCallAccepted = useCallback(
     async ({ answer }) => {
       try {
-        console.log("✅ Call accepted, setting remote description");
         await PeerService.setRemoteDescription(answer);
       } catch (error) {
         console.error("❌ Error in handleCallAccepted:", error);
@@ -188,21 +176,16 @@ const RoomPage = () => {
 
   // Socket Event Handlers
   const handleUserJoined = useCallback(
-  ({ id, room: joinedRoom, email }) => {
-    console.log(`👤 User ${email} joined room ${joinedRoom}, socket ID: ${id}`);
-    
+  ({ id, room: joinedRoom, email }) => {    
     // Only set remote socket if it's the same room
     if (joinedRoom === room) {
       setRemoteSocketId(id);
-      console.log(`✅ Remote peer set: ${id}`);
     } else {
-      console.log(`⚠️ User joined different room: ${joinedRoom} vs ${room}`);
     }
   },
   [room]
 );
   const handleCallEnded = useCallback(() => {
-    console.log("📱 Call ended");
     cleanupStreams();
   }, [cleanupStreams]);
 
@@ -217,7 +200,6 @@ const RoomPage = () => {
   // Initialize room connection
   useEffect(() => {
     if (socket && room) {
-      console.log(`🏠 Joining room: ${room}`);
       const email =
         localStorage.getItem("userEmail") || `user-${Date.now()}@example.com`;
       socket.emit("room:join", { room, email });
@@ -225,7 +207,6 @@ const RoomPage = () => {
       setRoomLink(window.location.href);
     }
     return () => {
-      console.log("🧹 Component unmounting, cleaning up");
       cleanupStreams();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,8 +250,6 @@ const RoomPage = () => {
   };
 
   const handleRemoteStream = ({ stream }) => {
-    console.log("🎥 Remote stream received:", stream.id);
-
     if (stream) {
       const videoTracks = stream.getVideoTracks();
       const audioTracks = stream.getAudioTracks();
@@ -289,28 +268,23 @@ const RoomPage = () => {
   };
 
   const handleICEConnected = () => {
-    console.log("🟢 ICE connection established");
     setIceConnectionState("connected");
   };
 
   const handleReconnectCall = async () => {
-  console.log("🔄 Handling call reconnection");
   if (remoteSocketId && myStream) {
     try {
       await PeerService.addTracks(myStream);
       const offer = await PeerService.createOffer();
       if (offer) {
         socket.emit("user:call", { to: remoteSocketId, offer, room });
-        console.log("🔄 Reconnection call sent");
         setIsCallInProgress(true); 
       }
     } catch (error) {
       console.error("❌ Reconnection call failed:", error);
       setError("Reconnection failed. Please try again."); 
     }
-  } else {
-    console.log("❌ Missing remoteSocketId or myStream for reconnection");
-  }
+  } 
 };
 
   const events = [
@@ -339,7 +313,6 @@ const RoomPage = () => {
       const videoElement = localVideoRef.current;
 
       if (videoElement.srcObject !== myStream) {
-        console.log("📹 Setting up local video");
         videoElement.srcObject = myStream;
 
         videoElement.play().catch((error) => {
@@ -353,14 +326,7 @@ const RoomPage = () => {
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
 
-    const videoElement = remoteVideoRef.current;
-    console.log(
-      "🎬 Setting up remote video:",
-      remoteStream.id,
-      "active:",
-      remoteStream.active
-    );
-
+    const videoElement = remoteVideoRef.current;  
     // Set srcObject if different
     if (videoElement.srcObject !== remoteStream) {
       videoElement.srcObject = remoteStream;
