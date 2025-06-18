@@ -208,12 +208,13 @@ class PeerService extends EventEmitter {
               "stun:stun2.l.google.com:19302",
               "stun:stun3.l.google.com:19302",
               "stun:stun4.l.google.com:19302",
+              "stun:stun.cloudflare.com:3478",
             ],
           },
           {
             urls: ["relay1.expressturn.com:3480"],
             username: "efPVTROUWWJ55A39IT",
-            password: "yP21Uvqy20rU7Zgj",
+            credential: "yP21Uvqy20rU7Zgj",
 
           },
           {
