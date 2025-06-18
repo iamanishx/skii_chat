@@ -195,100 +195,80 @@ class PeerService extends EventEmitter {
     }
   }
 
-  async initializeWithStun() {
-    try {
-      const config = {
-        iceServers: [
-          {
-            urls: [
-              "stun:stun1.l.google.com:19302",
-              "stun:stun2.l.google.com:19302",
-              "stun:stun3.l.google.com:19302",
-              "stun:stun4.l.google.com:19302",
-              "stun:stun.cloudflare.com:3478",
-              "stun:stun.relay.metered.ca:80",
-            ],
-          },
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-      };
+async initializeWithStun() {
+  try {
+    const config = {
+      iceServers: [
+        {
+          urls: [
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+            "stun:stun3.l.google.com:19302", 
+            "stun:stun4.l.google.com:19302",
+            "stun:stun.cloudflare.com:3478",
+            "stun:stun.relay.metered.ca:80",
+          ],
+        },
+        ...(import.meta.env.VITE_EXPRESSTURN_USERNAME ? [{
+          urls: ["turn:relay1.expressturn.com:3478"],
+          username: import.meta.env.VITE_EXPRESSTURN_USERNAME,
+          credential: import.meta.env.VITE_EXPRESSTURN_CREDENTIAL,
+        }] : []),
+      ],
+      iceCandidatePoolSize: 10,
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+    };
 
-      await this.createPeerConnection(config);
-      console.log("✅ Peer connection with STUN+TURN initialized successfully");
-    } catch (error) {
-      console.error("❌ Error initializing STUN+TURN connection:", error);
-      throw error;
-    }
+    await this.createPeerConnection(config);
+    console.log("✅ STUN+ExpressTurn initialized");
+  } catch (error) {
+    console.error("❌ Error initializing STUN connection:", error);
+    throw error;
   }
+}
 
   async initializeWithTurn() {
-    try {
-      console.log("🔄 Fetching TURN credentials...");
-
-      const response = await fetch(import.meta.env.VITE_CRED, {
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch TURN credentials: ${response.status} ${response.statusText}`
-        );
+  try {
+    console.log("🔄 Fetching Cloudflare credentials...");
+    const response = await fetch(import.meta.env.VITE_CRED);
+    const cloudflareCredentials = await response.json();
+    
+    const iceServers = [
+      {
+        urls: cloudflareCredentials.urls,
+        username: cloudflareCredentials.username,
+        credential: cloudflareCredentials.credential,
       }
-
-      const credentials = await response.json();
-      console.log("🔍 Cloudflare TURN Debug:", {
-      fullResponse: credentials,
-      urls: credentials.urls,
-      urlCount: credentials.urls?.length,
-      transportTypes: credentials.urls?.map(url => {
-        if (url.includes('transport=udp')) return 'UDP';
-        if (url.includes('transport=tcp')) return 'TCP';  
-        if (url.startsWith('turns:')) return 'TLS';
-        return 'Unknown';
-      }),
-      hasUDP: credentials.urls?.some(url => url.includes('transport=udp')),
-      hasTCP: credentials.urls?.some(url => url.includes('transport=tcp')),
-      hasTLS: credentials.urls?.some(url => url.startsWith('turns:')),
-    });
-      if (
-        !credentials?.urls?.length ||
-        !credentials.username ||
-        !credentials.credential
-      ) {
-        throw new Error("Invalid TURN credentials format");
-      }
-
-      const config = {
-        iceServers: [
-          {
-            urls: credentials.urls,
-            username: credentials.username,
-            credential: credentials.credential,
-          },
+    ];
+    if (import.meta.env.VITE_METERED_USERNAME) {
+      iceServers.push({
+        urls: [
+          "turn:standard.relay.metered.ca:80",
+          "turn:standard.relay.metered.ca:80?transport=tcp",
+          "turn:standard.relay.metered.ca:443",
+          "turns:standard.relay.metered.ca:443?transport=tcp"
         ],
-        iceTransportPolicy: "relay",
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-      };
-
-      await this.createPeerConnection(config);
-      console.log("✅ TURN-based peer connection initialized successfully");
-    } catch (error) {
-      console.error("❌ Error initializing TURN connection:", error);
-      this.emit("error", {
-        type: "turn",
-        message: "Failed to initialize TURN connection",
-        error,
+        username: import.meta.env.VITE_METERED_USERNAME,
+        credential: import.meta.env.VITE_METERED_CREDENTIAL,
       });
-      throw error;
     }
-  }
 
+    const config = {
+      iceServers,
+      iceTransportPolicy: "relay",
+      iceCandidatePoolSize: 10,
+      bundlePolicy: "max-bundle", 
+      rtcpMuxPolicy: "require",
+    };
+
+    await this.createPeerConnection(config);
+    console.log("✅ Cloudflare+Metered TURN initialized");
+  } catch (error) {
+    console.error("❌ Error initializing mixed TURN:", error);
+    throw error;
+  }
+}
   async createPeerConnection(config) {
     if (!config?.iceServers?.length) {
       throw new Error("Invalid configuration: iceServers array is required");
@@ -309,8 +289,6 @@ class PeerService extends EventEmitter {
     this.remotePeerId = peerId;
     console.log("🎯 Set remote peer ID:", peerId);
   }
-
-  // Event Setup
   setupPeerEvents() {
     if (!this.peer) return;
 
