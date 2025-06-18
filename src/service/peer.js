@@ -3,28 +3,23 @@ import EventEmitter from "events";
 class PeerService extends EventEmitter {
   constructor() {
     super();
-    // Core properties
     this.peer = null;
     this.roomId = null;
     this.socket = null;
 
-    // Connection management
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
     this.isReconnecting = false;
     this.isSettingRemoteDescription = false;
 
-    // Track management
     this.senders = new Map();
     this.pendingCandidates = [];
 
-    // Stream tracking to prevent duplicates
     this._streamTracking = new Map();
     this.remotePeerId = null;
   }
 
-  // Socket Management
   setSocket(socket) {
     this.socket = socket;
     this.setupSocketEvents();
@@ -33,10 +28,8 @@ class PeerService extends EventEmitter {
   setupSocketEvents() {
     if (!this.socket) return;
 
-    // Clean up existing listeners first
     this.socket.off("peer:ice-candidate");
 
-    // FIXED: Handle the correct event structure from server
     this.socket.on("peer:ice-candidate", ({ candidate, from, room }) => {
       console.log(`📥 Received ICE candidate from ${from} in room ${room}`);
       if (candidate && this.peer && room === this.roomId) {
@@ -171,7 +164,6 @@ class PeerService extends EventEmitter {
     }
   }
 
-
   async initializePeer(roomId) {
     console.log("🚀 Initializing peer connection for room:", roomId);
 
@@ -188,111 +180,95 @@ class PeerService extends EventEmitter {
     try {
       await this.initializeWithStun();
     } catch (error) {
-      console.log("🔄 STUN+TURN connection failed, trying cloudflare turn fallback", error);
+      console.log(
+        "🔄 STUN+TURN connection failed, trying cloudflare turn fallback",
+        error
+      );
       try {
-      await this.initializeWithTurn();
+        await this.initializeWithTurn();
       } catch (stunError) {
-        console.error("❌ Both cloudflare TURN and TURN+STUN initialization failed");
+        console.error(
+          "❌ Both cloudflare TURN and TURN+STUN initialization failed"
+        );
         throw stunError;
       }
     }
   }
 
-  async initializeWithStun() {
-    try {
-      const config = {
-        iceServers: [
-          {
-            urls: [
-              "stun:stun1.l.google.com:19302",
-              "stun:stun2.l.google.com:19302",
-              "stun:stun3.l.google.com:19302",
-              "stun:stun4.l.google.com:19302",
-              "stun:stun.cloudflare.com:3478",
-            ],
-          },
-          {
-            urls: ["turn:relay1.expressturn.com:3478"],
-            username: "efPVTROUWWJ55A39IT",
-            credential: "yP21Uvqy20rU7Zgj",
+async initializeWithStun() {
+  try {
+    const config = {
+      iceServers: [
+        {
+          urls: [
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+            "stun:stun3.l.google.com:19302", 
+            "stun:stun4.l.google.com:19302",
+            "stun:stun.cloudflare.com:3478",
+            "stun:stun.relay.metered.ca:80",
+          ],
+        },
+        ...(import.meta.env.VITE_EXPRESSTURN_USERNAME ? [{
+          urls: ["turn:relay1.expressturn.com:3478"],
+          username: import.meta.env.VITE_EXPRESSTURN_USERNAME,
+          credential: import.meta.env.VITE_EXPRESSTURN_CREDENTIAL,
+        }] : []),
+      ],
+      iceCandidatePoolSize: 10,
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+    };
 
-          },
-          {
-            urls: ["turn:openrelay.metered.ca:80"],
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: ["turn:openrelay.metered.ca:443"],
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-      };
-
-      await this.createPeerConnection(config);
-      console.log("✅ Peer connection with STUN+TURN initialized successfully");
-    } catch (error) {
-      console.error("❌ Error initializing STUN+TURN connection:", error);
-      throw error;
-    }
+    await this.createPeerConnection(config);
+    console.log("✅ STUN+ExpressTurn initialized");
+  } catch (error) {
+    console.error("❌ Error initializing STUN connection:", error);
+    throw error;
   }
+}
 
   async initializeWithTurn() {
-    try {
-      console.log("🔄 Fetching TURN credentials...");
-
-      const response = await fetch(import.meta.env.VITE_CRED, {
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch TURN credentials: ${response.status} ${response.statusText}`
-        );
+  try {
+    console.log("🔄 Fetching Cloudflare credentials...");
+    const response = await fetch(import.meta.env.VITE_CRED);
+    const cloudflareCredentials = await response.json();
+    
+    const iceServers = [
+      {
+        urls: cloudflareCredentials.urls,
+        username: cloudflareCredentials.username,
+        credential: cloudflareCredentials.credential,
       }
-
-      const credentials = await response.json();
-      console.log("🔑 TURN credentials fetched successfully:", credentials);
-      if (
-        !credentials?.urls?.length ||
-        !credentials.username ||
-        !credentials.credential
-      ) {
-        throw new Error("Invalid TURN credentials format");
-      }
-
-      const config = {
-        iceServers: [
-          {
-            urls: credentials.urls,
-            username: credentials.username,
-            credential: credentials.credential,
-          },
+    ];
+    if (import.meta.env.VITE_METERED_USERNAME) {
+      iceServers.push({
+        urls: [
+          "turn:standard.relay.metered.ca:80",
+          "turn:standard.relay.metered.ca:80?transport=tcp",
+          "turn:standard.relay.metered.ca:443",
+          "turns:standard.relay.metered.ca:443?transport=tcp"
         ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-      };
-
-      await this.createPeerConnection(config);
-      console.log("✅ TURN-based peer connection initialized successfully");
-    } catch (error) {
-      console.error("❌ Error initializing TURN connection:", error);
-      this.emit("error", {
-        type: "turn",
-        message: "Failed to initialize TURN connection",
-        error,
+        username: import.meta.env.VITE_METERED_USERNAME,
+        credential: import.meta.env.VITE_METERED_CREDENTIAL,
       });
-      throw error;
     }
-  }
 
+    const config = {
+      iceServers,
+      iceTransportPolicy: "relay",
+      iceCandidatePoolSize: 10,
+      bundlePolicy: "max-bundle", 
+      rtcpMuxPolicy: "require",
+    };
+
+    await this.createPeerConnection(config);
+    console.log("✅ Cloudflare+Metered TURN initialized");
+  } catch (error) {
+    console.error("❌ Error initializing mixed TURN:", error);
+    throw error;
+  }
+}
   async createPeerConnection(config) {
     if (!config?.iceServers?.length) {
       throw new Error("Invalid configuration: iceServers array is required");
@@ -313,8 +289,6 @@ class PeerService extends EventEmitter {
     this.remotePeerId = peerId;
     console.log("🎯 Set remote peer ID:", peerId);
   }
-
-  // Event Setup
   setupPeerEvents() {
     if (!this.peer) return;
 
@@ -325,7 +299,7 @@ class PeerService extends EventEmitter {
         if (this.remotePeerId) {
           this.socket.emit("peer:ice-candidate", {
             candidate,
-            to: this.remotePeerId, 
+            to: this.remotePeerId,
             room: this.roomId,
           });
         }
@@ -338,45 +312,45 @@ class PeerService extends EventEmitter {
 
     // Connection state monitoring
     this.peer.oniceconnectionstatechange = () => {
-    const iceState = this.peer?.iceConnectionState;
-    console.log("🔵 ICE connection state:", iceState);
+      const iceState = this.peer?.iceConnectionState;
+      console.log("🔵 ICE connection state:", iceState);
 
-    switch (iceState) {
-      case "connected":
-      case "completed":
-        console.log("✅ ICE CONNECTED - Media should flow now");
-        this.reconnectAttempts = 0;
-        this.isReconnecting = false;
-        this.emit("iceConnected");
-        break;
-      case "checking":
-        console.log("🔄 ICE checking candidates...");
-        if (this.iceTimeout) clearTimeout(this.iceTimeout);
-        this.iceTimeout = setTimeout(() => {
-          if (this.peer?.iceConnectionState === "checking") {
-            console.log("⏰ ICE checking timeout - trying fallback");
-            this.handleConnectionFailure();
-          }
-        }, 10000);
-        break;
-      case "failed":
-        console.log("❌ ICE connection failed");
-        if (this.iceTimeout) clearTimeout(this.iceTimeout);
-        this.handleConnectionFailure();
-        break;
-      case "disconnected":
-        console.log("⚠️ ICE connection disconnected");
-        if (this.iceTimeout) clearTimeout(this.iceTimeout);
-        setTimeout(() => {
-          if (this.peer?.iceConnectionState === "disconnected") {
-            this.handleConnectionFailure();
-          }
-        }, 3000);
-        break;
-      default:
-        console.log("🔵 ICE state:", iceState);
-    }
-  };
+      switch (iceState) {
+        case "connected":
+        case "completed":
+          console.log("✅ ICE CONNECTED - Media should flow now");
+          this.reconnectAttempts = 0;
+          this.isReconnecting = false;
+          this.emit("iceConnected");
+          break;
+        case "checking":
+          console.log("🔄 ICE checking candidates...");
+          if (this.iceTimeout) clearTimeout(this.iceTimeout);
+          this.iceTimeout = setTimeout(() => {
+            if (this.peer?.iceConnectionState === "checking") {
+              console.log("⏰ ICE checking timeout - trying fallback");
+              this.handleConnectionFailure();
+            }
+          }, 10000);
+          break;
+        case "failed":
+          console.log("❌ ICE connection failed");
+          if (this.iceTimeout) clearTimeout(this.iceTimeout);
+          this.handleConnectionFailure();
+          break;
+        case "disconnected":
+          console.log("⚠️ ICE connection disconnected");
+          if (this.iceTimeout) clearTimeout(this.iceTimeout);
+          setTimeout(() => {
+            if (this.peer?.iceConnectionState === "disconnected") {
+              this.handleConnectionFailure();
+            }
+          }, 3000);
+          break;
+        default:
+          console.log("🔵 ICE state:", iceState);
+      }
+    };
 
     this.peer.onconnectionstatechange = () => {
       const state = this.peer?.connectionState;
@@ -493,74 +467,79 @@ class PeerService extends EventEmitter {
 
   // Connection Recovery
   async handleConnectionFailure() {
-  if (this.isReconnecting) {
-    console.log("🔄 Already attempting reconnection");
-    return;
-  }
-  if (this.reconnectAttempts === 0 && this.lastUsedConfig !== 'turn') {
-    console.log("🔄 First failure - trying Cloudflare TURN servers");
+    if (this.isReconnecting) {
+      console.log("🔄 Already attempting reconnection");
+      return;
+    }
+    if (this.reconnectAttempts === 0 && this.lastUsedConfig !== "turn") {
+      console.log("🔄 First failure - trying Cloudflare TURN servers");
+      this.isReconnecting = true;
+      this.reconnectAttempts++;
+
+      try {
+        const currentRemotePeer = this.remotePeerId;
+        const currentRoom = this.roomId;
+        await this.cleanup();
+        await this.initializeWithTurn();
+        this.lastUsedConfig = "turn";
+        this.remotePeerId = currentRemotePeer;
+        this.roomId = currentRoom;
+        if (this.remotePeerId && this.roomId) {
+          console.log("🔄 Re-establishing call with TURN servers");
+          this.emit("reconnectCall");
+        }
+
+        console.log("✅cloudflare TURN fallback successful");
+        this.isReconnecting = false;
+        return;
+      } catch (error) {
+        console.error("❌ TURN fallback failed:", error);
+        this.isReconnecting = false;
+      }
+    }
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error("❌ Max reconnection attempts reached");
+      this.emit("error", {
+        type: "reconnect",
+        message: "Connection failed. Please refresh and try again.",
+      });
+      return;
+    }
+
     this.isReconnecting = true;
     this.reconnectAttempts++;
-    
-    try {
-      const currentRemotePeer = this.remotePeerId;
-      const currentRoom = this.roomId;
-      await this.cleanup();
-      await this.initializeWithTurn();
-      this.lastUsedConfig = 'turn';
-      this.remotePeerId = currentRemotePeer;
-      this.roomId = currentRoom;
-      if (this.remotePeerId && this.roomId) {
-        console.log("🔄 Re-establishing call with TURN servers");
-        this.emit("reconnectCall");
-      }
-      
-      console.log("✅cloudflare TURN fallback successful");
-      this.isReconnecting = false;
-      return;
-    } catch (error) {
-      console.error("❌ TURN fallback failed:", error);
-      this.isReconnecting = false;
-    }
-  }
-  if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-    console.error("❌ Max reconnection attempts reached");
-    this.emit("error", {
-      type: "reconnect",
-      message: "Connection failed. Please refresh and try again.",
-    });
-    return;
-  }
+    const delay = Math.min(
+      1000 * Math.pow(2, this.reconnectAttempts - 1),
+      10000
+    );
 
-  this.isReconnecting = true;
-  this.reconnectAttempts++;
-  const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
-  
-  console.log(`🔄 Reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
-  
-  setTimeout(async () => {
-    try {
-      await this.cleanup();
-      if (this.reconnectAttempts % 2 === 0) {
-        await this.initializeWithTurn();
-        this.lastUsedConfig = 'turn';
-      } else {
-        await this.initializeWithStun();
-        this.lastUsedConfig = 'stun';
+    console.log(
+      `🔄 Reconnection attempt ${this.reconnectAttempts} in ${delay}ms`
+    );
+
+    setTimeout(async () => {
+      try {
+        await this.cleanup();
+        if (this.reconnectAttempts % 2 === 0) {
+          await this.initializeWithTurn();
+          this.lastUsedConfig = "turn";
+        } else {
+          await this.initializeWithStun();
+          this.lastUsedConfig = "stun";
+        }
+
+        if (this.remotePeerId && this.roomId) {
+          this.emit("reconnectCall");
+        }
+
+        this.isReconnecting = false;
+      } catch (error) {
+        console.error("❌ Reconnection failed:", error);
+        this.isReconnecting = false;
+        setTimeout(() => this.handleConnectionFailure(), 1000);
       }
-      
-      if (this.remotePeerId && this.roomId) {
-        this.emit("reconnectCall");
-      }
-      
-      this.isReconnecting = false;
-    } catch (error) {
-      console.error("❌ Reconnection failed:", error);
-      this.isReconnecting = false;
-      setTimeout(() => this.handleConnectionFailure(), 1000);
-    }
-  }, delay);
-}
+    }, delay);
+  }
 
   // Utility Methods
   async switchMediaSource(newStream) {
