@@ -3,28 +3,23 @@ import EventEmitter from "events";
 class PeerService extends EventEmitter {
   constructor() {
     super();
-    // Core properties
     this.peer = null;
     this.roomId = null;
     this.socket = null;
 
-    // Connection management
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
     this.isReconnecting = false;
     this.isSettingRemoteDescription = false;
 
-    // Track management
     this.senders = new Map();
     this.pendingCandidates = [];
 
-    // Stream tracking to prevent duplicates
     this._streamTracking = new Map();
     this.remotePeerId = null;
   }
 
-  // Socket Management
   setSocket(socket) {
     this.socket = socket;
     this.setupSocketEvents();
@@ -33,10 +28,8 @@ class PeerService extends EventEmitter {
   setupSocketEvents() {
     if (!this.socket) return;
 
-    // Clean up existing listeners first
     this.socket.off("peer:ice-candidate");
 
-    // FIXED: Handle the correct event structure from server
     this.socket.on("peer:ice-candidate", ({ candidate, from, room }) => {
       console.log(`📥 Received ICE candidate from ${from} in room ${room}`);
       if (candidate && this.peer && room === this.roomId) {
@@ -210,12 +203,6 @@ class PeerService extends EventEmitter {
               "stun:stun4.l.google.com:19302",
               "stun:stun.cloudflare.com:3478",
             ],
-          },
-          {
-            urls: ["turn:relay1.expressturn.com:3478"],
-            username: "efPVTROUWWJ55A39IT",
-            credential: "yP21Uvqy20rU7Zgj",
-
           },
           {
             urls: ["turn:openrelay.metered.ca:80"],
