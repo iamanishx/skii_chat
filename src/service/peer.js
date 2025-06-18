@@ -209,31 +209,6 @@ class PeerService extends EventEmitter {
               "stun:stun.relay.metered.ca:80",
             ],
           },
-          {
-            urls: ["turn:relay1.expressturn.com:3478"],
-            username: "efPVTROUWWJ55A39IT",
-            credential: "yP21Uvqy20rU7Zgj",
-          },
-          {
-            urls: "turn:standard.relay.metered.ca:80",
-            username: "2e537183775662dbae601aa8",
-            credential: "5BBFiqBWTyDjsEmJ",
-          },
-          {
-            urls: "turn:standard.relay.metered.ca:80?transport=tcp",
-            username: "2e537183775662dbae601aa8",
-            credential: "5BBFiqBWTyDjsEmJ",
-          },
-          {
-            urls: "turn:standard.relay.metered.ca:443",
-            username: "2e537183775662dbae601aa8",
-            credential: "5BBFiqBWTyDjsEmJ",
-          },
-          {
-            urls: "turns:standard.relay.metered.ca:443?transport=tcp",
-            username: "2e537183775662dbae601aa8",
-            credential: "5BBFiqBWTyDjsEmJ",
-          },
         ],
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
