@@ -213,7 +213,7 @@ class PeerService extends EventEmitter {
           {
             urls: ["relay1.expressturn.com:3480"],
             username: "efPVTROUWWJ55A39IT",
-            credential: "yP21Uvqy20rU7Zgj",
+            password: "yP21Uvqy20rU7Zgj",
 
           },
           {
@@ -227,7 +227,6 @@ class PeerService extends EventEmitter {
             credential: "openrelayproject",
           },
         ],
-        iceTransportPolicy: "relay", // Force TURN only - for testing
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
         rtcpMuxPolicy: "require",
@@ -502,10 +501,13 @@ class PeerService extends EventEmitter {
     this.reconnectAttempts++;
     
     try {
+      const currentRemotePeer = this.remotePeerId;
+      const currentRoom = this.roomId;
       await this.cleanup();
       await this.initializeWithTurn();
       this.lastUsedConfig = 'turn';
-      
+      this.remotePeerId = currentRemotePeer;
+      this.roomId = currentRoom;
       if (this.remotePeerId && this.roomId) {
         console.log("🔄 Re-establishing call with TURN servers");
         this.emit("reconnectCall");
