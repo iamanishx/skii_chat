@@ -176,11 +176,9 @@ const RoomPage = () => {
 
   // Socket Event Handlers
   const handleUserJoined = useCallback(
-  ({ id, room: joinedRoom, email }) => {    
-    // Only set remote socket if it's the same room
+  ({ id, room: joinedRoom }) => {    
     if (joinedRoom === room) {
       setRemoteSocketId(id);
-    } else {
     }
   },
   [room]
