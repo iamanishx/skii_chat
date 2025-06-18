@@ -30,8 +30,7 @@ class PeerService extends EventEmitter {
 
     this.socket.off("peer:ice-candidate");
 
-    this.socket.on("peer:ice-candidate", ({ candidate, from, room }) => {
-      console.log(`📥 Received ICE candidate from ${from} in room ${room}`);
+    this.socket.on("peer:ice-candidate", ({ candidate, room }) => {
       if (candidate && this.peer && room === this.roomId) {
         this.addIceCandidate(candidate);
       }
@@ -43,10 +42,8 @@ class PeerService extends EventEmitter {
     try {
       if (this.peer?.remoteDescription && this.peer?.remoteDescription.type) {
         await this.peer.addIceCandidate(new RTCIceCandidate(candidate));
-        console.log("✅ Added ICE candidate successfully");
       } else {
         this.pendingCandidates.push(candidate);
-        console.log("📦 Stored ICE candidate for later");
       }
     } catch (error) {
       console.error("❌ Error adding ICE candidate:", error);
@@ -65,7 +62,6 @@ class PeerService extends EventEmitter {
     }
 
     try {
-      console.log("📤 Creating offer...");
       const offer = await this.peer.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
@@ -73,10 +69,8 @@ class PeerService extends EventEmitter {
       });
 
       await this.peer.setLocalDescription(offer);
-      console.log("✅ Offer created and local description set");
       return offer;
     } catch (error) {
-      console.error("❌ Error creating offer:", error);
       this.emit("error", {
         type: "offer",
         message: "Error creating offer",
@@ -92,13 +86,11 @@ class PeerService extends EventEmitter {
       throw new Error("No peer connection available");
     }
     try {
-      console.log("📥 Creating answer for received offer...");
       await this.peer.setRemoteDescription(new RTCSessionDescription(offer));
 
       const answer = await this.peer.createAnswer();
       await this.peer.setLocalDescription(answer);
 
-      console.log("✅ Answer created and descriptions set");
       return answer;
     } catch (error) {
       console.error("❌ Error creating answer:", error);
@@ -118,19 +110,13 @@ class PeerService extends EventEmitter {
       return;
     }
     if (this.isSettingRemoteDescription) {
-      console.log("⏳ Already setting remote description, skipping");
       return;
     }
     try {
       this.isSettingRemoteDescription = true;
       const currentState = this.peer.signalingState;
-      console.log(
-        "🔄 Setting remote description, current state:",
-        currentState
-      );
       if (["stable", "have-local-offer"].includes(currentState)) {
         await this.peer.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log("✅ Remote description set successfully");
 
         await this.processPendingCandidates();
       } else {
@@ -153,11 +139,6 @@ class PeerService extends EventEmitter {
 
   async processPendingCandidates() {
     if (this.pendingCandidates.length === 0) return;
-
-    console.log(
-      `🔄 Processing ${this.pendingCandidates.length} pending ICE candidates`
-    );
-
     while (this.pendingCandidates.length > 0) {
       const candidate = this.pendingCandidates.shift();
       await this.addIceCandidate(candidate);
@@ -165,8 +146,6 @@ class PeerService extends EventEmitter {
   }
 
   async initializePeer(roomId) {
-    console.log("🚀 Initializing peer connection for room:", roomId);
-
     this.cleanup();
 
     this.roomId = roomId;
@@ -181,14 +160,14 @@ class PeerService extends EventEmitter {
       await this.initializeWithStun();
     } catch (error) {
       console.log(
-        "🔄 STUN+TURN connection failed, trying cloudflare turn fallback",
+        "🔄 STUN conn. failed, trying turn fallback",
         error
       );
       try {
         await this.initializeWithTurn();
       } catch (stunError) {
         console.error(
-          "❌ Both cloudflare TURN and TURN+STUN initialization failed"
+          "❌ Both TURN and STUN initialization failed"
         );
         throw stunError;
       }
@@ -221,7 +200,6 @@ async initializeWithStun() {
     };
 
     await this.createPeerConnection(config);
-    console.log("✅ STUN+ExpressTurn initialized");
   } catch (error) {
     console.error("❌ Error initializing STUN connection:", error);
     throw error;
@@ -230,7 +208,6 @@ async initializeWithStun() {
 
   async initializeWithTurn() {
   try {
-    console.log("🔄 Fetching Cloudflare credentials...");
     const response = await fetch(import.meta.env.VITE_CRED);
     const cloudflareCredentials = await response.json();
     
@@ -263,7 +240,6 @@ async initializeWithStun() {
     };
 
     await this.createPeerConnection(config);
-    console.log("✅ Cloudflare+Metered TURN initialized");
   } catch (error) {
     console.error("❌ Error initializing mixed TURN:", error);
     throw error;
@@ -274,20 +250,11 @@ async initializeWithStun() {
       throw new Error("Invalid configuration: iceServers array is required");
     }
 
-    console.log("🔧 Creating peer connection with config:", {
-      iceServers: config.iceServers.map((server) => ({
-        urls: server.urls,
-        hasCredentials: !!(server.username && server.credential),
-      })),
-      ...config,
-    });
-
     this.peer = new RTCPeerConnection(config);
     this.setupPeerEvents();
   }
   setRemotePeer(peerId) {
     this.remotePeerId = peerId;
-    console.log("🎯 Set remote peer ID:", peerId);
   }
   setupPeerEvents() {
     if (!this.peer) return;
@@ -295,7 +262,6 @@ async initializeWithStun() {
     // ICE candidate handling
     this.peer.onicecandidate = ({ candidate }) => {
       if (candidate && this.socket) {
-        console.log("📤 Sending ICE candidate to room:", this.roomId);
         if (this.remotePeerId) {
           this.socket.emit("peer:ice-candidate", {
             candidate,
@@ -313,33 +279,27 @@ async initializeWithStun() {
     // Connection state monitoring
     this.peer.oniceconnectionstatechange = () => {
       const iceState = this.peer?.iceConnectionState;
-      console.log("🔵 ICE connection state:", iceState);
 
       switch (iceState) {
         case "connected":
         case "completed":
-          console.log("✅ ICE CONNECTED - Media should flow now");
           this.reconnectAttempts = 0;
           this.isReconnecting = false;
           this.emit("iceConnected");
           break;
         case "checking":
-          console.log("🔄 ICE checking candidates...");
           if (this.iceTimeout) clearTimeout(this.iceTimeout);
           this.iceTimeout = setTimeout(() => {
             if (this.peer?.iceConnectionState === "checking") {
-              console.log("⏰ ICE checking timeout - trying fallback");
               this.handleConnectionFailure();
             }
           }, 10000);
           break;
         case "failed":
-          console.log("❌ ICE connection failed");
           if (this.iceTimeout) clearTimeout(this.iceTimeout);
           this.handleConnectionFailure();
           break;
         case "disconnected":
-          console.log("⚠️ ICE connection disconnected");
           if (this.iceTimeout) clearTimeout(this.iceTimeout);
           setTimeout(() => {
             if (this.peer?.iceConnectionState === "disconnected") {
@@ -348,18 +308,15 @@ async initializeWithStun() {
           }, 3000);
           break;
         default:
-          console.log("🔵 ICE state:", iceState);
       }
     };
 
     this.peer.onconnectionstatechange = () => {
       const state = this.peer?.connectionState;
-      console.log("🟡 Overall connection state:", state);
 
       if (state === "connected") {
         console.log("✅ Peer connection fully established");
       } else if (["failed", "disconnected"].includes(state)) {
-        console.log("❌ Peer connection failed/disconnected");
         this.handleConnectionFailure();
       }
     };
@@ -374,14 +331,12 @@ async initializeWithStun() {
   handleIncomingTrack(event) {
     const stream = event.streams[0];
     if (!stream) {
-      console.warn("⚠️ Received track without stream");
       return;
     }
 
     const streamId = stream.id;
     const trackKind = event.track.kind;
 
-    console.log(`📺 Received ${trackKind} track for stream ${streamId}`);
 
     // Get or create tracking info
     let trackingInfo = this._streamTracking.get(streamId);
@@ -411,9 +366,6 @@ async initializeWithStun() {
     // Emit stream when we have both tracks or after timeout
     trackingInfo.timeoutId = setTimeout(() => {
       if (!trackingInfo.emitted) {
-        console.log(
-          `✅ Emitting remote stream ${streamId} (audio: ${trackingInfo.hasAudio}, video: ${trackingInfo.hasVideo})`
-        );
         trackingInfo.emitted = true;
         this.emit("remoteStream", { stream: trackingInfo.stream });
       }
@@ -428,9 +380,6 @@ async initializeWithStun() {
     }
 
     try {
-      console.log("🎵 Adding tracks to peer connection");
-
-      // Remove existing senders
       for (const sender of this.senders.values()) {
         try {
           this.peer.removeTrack(sender);
@@ -442,10 +391,7 @@ async initializeWithStun() {
 
       // Add new tracks
       const tracks = stream.getTracks();
-      console.log(`📎 Adding ${tracks.length} tracks to peer connection`);
-
       tracks.forEach((track) => {
-        console.log(`➕ Adding ${track.kind} track`);
         try {
           const sender = this.peer.addTrack(track, stream);
           this.senders.set(track.kind, sender);
@@ -454,7 +400,6 @@ async initializeWithStun() {
         }
       });
 
-      console.log("✅ All tracks added successfully");
     } catch (error) {
       console.error("❌ Error managing tracks:", error);
       this.emit("error", {
@@ -468,11 +413,9 @@ async initializeWithStun() {
   // Connection Recovery
   async handleConnectionFailure() {
     if (this.isReconnecting) {
-      console.log("🔄 Already attempting reconnection");
       return;
     }
     if (this.reconnectAttempts === 0 && this.lastUsedConfig !== "turn") {
-      console.log("🔄 First failure - trying Cloudflare TURN servers");
       this.isReconnecting = true;
       this.reconnectAttempts++;
 
@@ -485,11 +428,8 @@ async initializeWithStun() {
         this.remotePeerId = currentRemotePeer;
         this.roomId = currentRoom;
         if (this.remotePeerId && this.roomId) {
-          console.log("🔄 Re-establishing call with TURN servers");
           this.emit("reconnectCall");
         }
-
-        console.log("✅cloudflare TURN fallback successful");
         this.isReconnecting = false;
         return;
       } catch (error) {
@@ -512,11 +452,6 @@ async initializeWithStun() {
       1000 * Math.pow(2, this.reconnectAttempts - 1),
       10000
     );
-
-    console.log(
-      `🔄 Reconnection attempt ${this.reconnectAttempts} in ${delay}ms`
-    );
-
     setTimeout(async () => {
       try {
         await this.cleanup();
@@ -547,7 +482,6 @@ async initializeWithStun() {
       console.error("❌ No peer connection available for media switch");
       return;
     }
-
     console.log("🔄 Switching media source");
     await this.addTracks(newStream);
     this.emit("media-source-switched", { newStream });
@@ -578,7 +512,6 @@ async initializeWithStun() {
 
   // Cleanup
   cleanup() {
-    console.log("🧹 Cleaning up peer connection");
     for (const trackingInfo of this._streamTracking.values()) {
       if (trackingInfo.timeoutId) {
         clearTimeout(trackingInfo.timeoutId);
