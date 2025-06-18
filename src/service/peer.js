@@ -205,14 +205,10 @@ class PeerService extends EventEmitter {
             ],
           },
           {
-            urls: ["turn:openrelay.metered.ca:80"],
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: ["turn:openrelay.metered.ca:443"],
-            username: "openrelayproject",
-            credential: "openrelayproject",
+            urls: ["turn:relay1.expressturn.com:3478"],
+            username: "efPVTROUWWJ55A39IT",
+            credential: "yP21Uvqy20rU7Zgj",
+
           },
         ],
         iceCandidatePoolSize: 10,
