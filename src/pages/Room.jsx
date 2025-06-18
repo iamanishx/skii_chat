@@ -294,20 +294,25 @@ const RoomPage = () => {
   };
 
   const handleReconnectCall = async () => {
-    console.log("🔄 Handling call reconnection");
-    if (remoteSocketId && myStream) {
-      try {
-        await PeerService.addTracks(myStream);
-        const offer = await PeerService.createOffer();
-        if (offer) {
-          socket.emit("user:call", { to: remoteSocketId, offer, room });
-          console.log("🔄 Reconnection call sent");
-        }
-      } catch (error) {
-        console.error("❌ Reconnection call failed:", error);
+  console.log("🔄 Handling call reconnection");
+  if (remoteSocketId && myStream) {
+    try {
+      // Add tracks to the new TURN peer connection
+      await PeerService.addTracks(myStream);
+      const offer = await PeerService.createOffer();
+      if (offer) {
+        socket.emit("user:call", { to: remoteSocketId, offer, room });
+        console.log("🔄 Reconnection call sent");
+        setIsCallInProgress(true); // Add this line
       }
+    } catch (error) {
+      console.error("❌ Reconnection call failed:", error);
+      setError("Reconnection failed. Please try again."); // Add this line
     }
-  };
+  } else {
+    console.log("❌ Missing remoteSocketId or myStream for reconnection");
+  }
+};
 
   const events = [
     ["error", handlePeerError],
