@@ -485,42 +485,71 @@ class PeerService extends EventEmitter {
 
   // Connection Recovery
   async handleConnectionFailure() {
-    if (this.isReconnecting) {
-      console.log("🔄 Already attempting reconnection");
-      return;
-    }
-
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error("❌ Max reconnection attempts reached");
-      this.emit("error", {
-        type: "reconnect",
-        message: "Max reconnection attempts reached",
-      });
-      this.cleanup();
-      return;
-    }
-
+  if (this.isReconnecting) {
+    console.log("🔄 Already attempting reconnection");
+    return;
+  }
+  if (this.reconnectAttempts === 0 && this.lastUsedConfig !== 'turn') {
+    console.log("🔄 First failure - trying Cloudflare TURN servers");
     this.isReconnecting = true;
     this.reconnectAttempts++;
-
-    // Exponential backoff
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    console.log(
-      `🔄 Reconnection attempt ${this.reconnectAttempts} in ${delay}ms`
-    );
-
-    setTimeout(async () => {
-      try {
-        await this.initializeConnection();
-        console.log("✅ Reconnection successful");
-        this.isReconnecting = false;
-      } catch (error) {
-        console.error("❌ Reconnection attempt failed:", error);
-        this.isReconnecting = false;
-        await this.handleConnectionFailure();
+    
+    try {
+      await this.cleanup();
+      await this.initializeWithTurn();
+      this.lastUsedConfig = 'turn';
+      
+      if (this.remotePeerId && this.roomId) {
+        console.log("🔄 Re-establishing call with TURN servers");
+        this.emit("reconnectCall");
       }
-    }, delay);
+      
+      console.log("✅ TURN fallback successful");
+      this.isReconnecting = false;
+      return;
+    } catch (error) {
+      console.error("❌ TURN fallback failed:", error);
+      this.isReconnecting = false;
+    }
   }
+  if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+    console.error("❌ Max reconnection attempts reached");
+    this.emit("error", {
+      type: "reconnect",
+      message: "Connection failed. Please refresh and try again.",
+    });
+    return;
+  }
+
+  this.isReconnecting = true;
+  this.reconnectAttempts++;
+  const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
+  
+  console.log(`🔄 Reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
+  
+  setTimeout(async () => {
+    try {
+      await this.cleanup();
+      if (this.reconnectAttempts % 2 === 0) {
+        await this.initializeWithTurn();
+        this.lastUsedConfig = 'turn';
+      } else {
+        await this.initializeWithStun();
+        this.lastUsedConfig = 'stun';
+      }
+      
+      if (this.remotePeerId && this.roomId) {
+        this.emit("reconnectCall");
+      }
+      
+      this.isReconnecting = false;
+    } catch (error) {
+      console.error("❌ Reconnection failed:", error);
+      this.isReconnecting = false;
+      setTimeout(() => this.handleConnectionFailure(), 1000);
+    }
+  }, delay);
+}
 
   // Utility Methods
   async switchMediaSource(newStream) {

@@ -262,55 +262,73 @@ const RoomPage = () => {
   ]);
 
   // PeerService event listeners
-  useEffect(() => {
-    const handlePeerError = ({ type, message }) => {
-      console.error(`💥 Peer error (${type}):`, message);
-      setError(`Connection error: ${message}`);
-    };
+ useEffect(() => {
+  const handlePeerError = ({ type, message }) => {
+    console.error(`💥 Peer error (${type}):`, message);
+    setError(`Connection error: ${message}`);
+  };
 
-    const handleRemoteStream = ({ stream }) => {
-      console.log("🎥 Remote stream received:", stream.id);
+  const handleRemoteStream = ({ stream }) => {
+    console.log("🎥 Remote stream received:", stream.id);
 
-      if (stream) {
-        const videoTracks = stream.getVideoTracks();
-        const audioTracks = stream.getAudioTracks();
+    if (stream) {
+      const videoTracks = stream.getVideoTracks();
+      const audioTracks = stream.getAudioTracks();
 
-        console.log("📊 Remote stream details:", {
-          id: stream.id,
-          active: stream.active,
-          videoTracks: videoTracks.length,
-          audioTracks: audioTracks.length,
-          videoEnabled: videoTracks.length > 0 ? videoTracks[0].enabled : false,
-          audioEnabled: audioTracks.length > 0 ? audioTracks[0].enabled : false,
-        });
-      }
-
-      setRemoteStream(stream);
-    };
-
-    const handleICEConnected = () => {
-      console.log("🟢 ICE connection established");
-      setIceConnectionState("connected");
-    };
-
-    const events = [
-      ["error", handlePeerError],
-      ["remoteStream", handleRemoteStream],
-      ["iceConnected", handleICEConnected],
-    ];
-
-    // Register PeerService events
-    events.forEach(([event, handler]) => {
-      PeerService.on(event, handler);
-    });
-
-    return () => {
-      // Cleanup PeerService events
-      events.forEach(([event, handler]) => {
-        PeerService.off(event, handler);
+      console.log("📊 Remote stream details:", {
+        id: stream.id,
+        active: stream.active,
+        videoTracks: videoTracks.length,
+        audioTracks: audioTracks.length,
+        videoEnabled: videoTracks.length > 0 ? videoTracks[0].enabled : false,
+        audioEnabled: audioTracks.length > 0 ? audioTracks[0].enabled : false,
       });
-    };
-  }, []);
+    }
+
+    setRemoteStream(stream);
+  };
+
+  const handleICEConnected = () => {
+    console.log("🟢 ICE connection established");
+    setIceConnectionState("connected");
+  };
+
+  // ADD THIS RECONNECTION HANDLER
+  const handleReconnectCall = async () => {
+    console.log("🔄 Handling call reconnection");
+    if (remoteSocketId && myStream) {
+      try {
+        await PeerService.addTracks(myStream);
+        const offer = await PeerService.createOffer();
+        if (offer) {
+          socket.emit("user:call", { to: remoteSocketId, offer, room });
+          console.log("🔄 Reconnection call sent");
+        }
+      } catch (error) {
+        console.error("❌ Reconnection call failed:", error);
+      }
+    }
+  };
+
+  const events = [
+    ["error", handlePeerError],
+    ["remoteStream", handleRemoteStream],
+    ["iceConnected", handleICEConnected],
+    ["reconnectCall", handleReconnectCall], // ADD THIS LINE
+  ];
+
+  // Register PeerService events
+  events.forEach(([event, handler]) => {
+    PeerService.on(event, handler);
+  });
+
+  return () => {
+    // Cleanup PeerService events
+    events.forEach(([event, handler]) => {
+      PeerService.off(event, handler);
+    });
+  };
+}, [remoteSocketId, myStream, socket, room]);
 
   // Local video setup
   useEffect(() => {
