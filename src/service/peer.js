@@ -206,6 +206,8 @@ class PeerService extends EventEmitter {
             urls: [
               "stun:stun1.l.google.com:19302",
               "stun:stun2.l.google.com:19302",
+              "stun:stun3.l.google.com:19302",
+              "stun:stun4.l.google.com:19302",
             ],
           },
           {
@@ -312,51 +314,61 @@ class PeerService extends EventEmitter {
     this.peer.onicecandidate = ({ candidate }) => {
       if (candidate && this.socket) {
         console.log("📤 Sending ICE candidate to room:", this.roomId);
-
-        // Send to the specific peer, not the room
         if (this.remotePeerId) {
           this.socket.emit("peer:ice-candidate", {
             candidate,
-            to: this.remotePeerId, // Send to specific peer
+            to: this.remotePeerId, 
             room: this.roomId,
           });
         }
       }
     };
 
-    // Track handling with duplicate prevention
     this.peer.ontrack = (event) => {
       this.handleIncomingTrack(event);
     };
 
     // Connection state monitoring
     this.peer.oniceconnectionstatechange = () => {
-      const iceState = this.peer?.iceConnectionState;
-      console.log("🔵 ICE connection state:", iceState);
+    const iceState = this.peer?.iceConnectionState;
+    console.log("🔵 ICE connection state:", iceState);
 
-      switch (iceState) {
-        case "connected":
-        case "completed":
-          console.log("✅ ICE CONNECTED - Media should flow now");
-          this.reconnectAttempts = 0;
-          this.isReconnecting = false;
-          this.emit("iceConnected");
-          break;
-        case "checking":
-          console.log("🔄 ICE checking candidates...");
-          break;
-        case "failed":
-        case "disconnected":
-          console.log("❌ ICE connection failed/disconnected");
-          this.handleConnectionFailure();
-          break;
-        case "new":
-          console.log("🆕 ICE connection in new state");
-          break;
-        default:
-          console.log("🔵 ICE state:", iceState);
-      }
-    };
+    switch (iceState) {
+      case "connected":
+      case "completed":
+        console.log("✅ ICE CONNECTED - Media should flow now");
+        this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+        this.emit("iceConnected");
+        break;
+      case "checking":
+        console.log("🔄 ICE checking candidates...");
+        if (this.iceTimeout) clearTimeout(this.iceTimeout);
+        this.iceTimeout = setTimeout(() => {
+          if (this.peer?.iceConnectionState === "checking") {
+            console.log("⏰ ICE checking timeout - trying fallback");
+            this.handleConnectionFailure();
+          }
+        }, 5000);
+        break;
+      case "failed":
+        console.log("❌ ICE connection failed");
+        if (this.iceTimeout) clearTimeout(this.iceTimeout);
+        this.handleConnectionFailure();
+        break;
+      case "disconnected":
+        console.log("⚠️ ICE connection disconnected");
+        if (this.iceTimeout) clearTimeout(this.iceTimeout);
+        setTimeout(() => {
+          if (this.peer?.iceConnectionState === "disconnected") {
+            this.handleConnectionFailure();
+          }
+        }, 3000);
+        break;
+      default:
+        console.log("🔵 ICE state:", iceState);
+    }
+  };
 
     this.peer.onconnectionstatechange = () => {
       const state = this.peer?.connectionState;
