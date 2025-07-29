@@ -273,6 +273,13 @@ const RoomPage = () => {
     }
   }, [remoteSocketId, socket, room, myStream, initializeLocalStream]);
 
+  // Automatically start call when a peer joins
+  useEffect(() => {
+    if (remoteSocketId && !isCallInProgress) {
+      handleCallUser();
+    }
+  }, [remoteSocketId, isCallInProgress, handleCallUser]);
+
   // Socket event listeners
   useEffect(() => {
     if (!socket) return;
