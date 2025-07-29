@@ -227,6 +227,7 @@ const RoomPage = () => {
     });
 
     return () => {
+      // Cleanup event listeners
       Object.entries(eventHandlers).forEach(([event, handler]) => {
         socket.off(event, handler);
       });

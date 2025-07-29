@@ -6,7 +6,7 @@ class PeerService extends EventEmitter {
     this.peer = null;
     this.roomId = null;
     this.socket = null;
-
+    
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
