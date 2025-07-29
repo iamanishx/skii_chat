@@ -36,7 +36,6 @@ const RoomPage = () => {
   // UI states
   const [isCopied, setIsCopied] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [error, setError] = useState(null);
   const [participants, setParticipants] = useState([]);
 
@@ -144,10 +143,8 @@ const RoomPage = () => {
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen();
-      setIsFullscreen(false);
     }
   }, []);
 
@@ -155,22 +152,28 @@ const RoomPage = () => {
   const handleIncomingCall = useCallback(
     async ({ from, offer }) => {
       try {
+        setError(null);
         setRemoteSocketId(from);
         setIsCallInProgress(true);
         
-        if (!myStream) {
-          await initializeLocalStream();
+        // Ensure we have local stream
+        let stream = myStream;
+        if (!stream) {
+          stream = await initializeLocalStream();
         }
         
+        await PeerService.cleanup();
         await PeerService.initializePeer(room);
         PeerService.setRemotePeer(from);
         
-        if (myStream) {
-          await PeerService.addTracks(myStream);
+        if (stream) {
+          await PeerService.addTracks(stream);
         }
         
         const answer = await PeerService.createAnswer(offer);
-        socket.emit("call:accepted", { to: from, answer });
+        if (answer) {
+          socket.emit("call:accepted", { to: from, answer, room });
+        }
       } catch (error) {
         console.error("Error handling incoming call:", error);
         setError("Failed to accept the call. Please try again.");
@@ -204,17 +207,6 @@ const RoomPage = () => {
     [sendStreams]
   );
 
-  const handleNegoNeeded = useCallback(async () => {
-    if (!PeerService.peer || !remoteSocketId) return;
-    
-    try {
-      const offer = await PeerService.createOffer();
-      socket.emit("peer:nego:needed", { offer, to: remoteSocketId });
-    } catch (error) {
-      console.error("Error in negotiation:", error);
-    }
-  }, [socket, remoteSocketId]);
-
   const handleNegoIncoming = useCallback(
     async ({ from, offer }) => {
       try {
@@ -239,29 +231,41 @@ const RoomPage = () => {
   );
 
   const handleUserJoined = useCallback(
-    ({ email, id }) => {
+    ({ email, id, room: joinedRoom }) => {
       console.log(`User ${email} joined with ID: ${id}`);
-      setRemoteSocketId(id);
-      setParticipants(prev => [...prev.filter(p => p.id !== id), { email, id }]);
+      if (joinedRoom === room) {
+        setRemoteSocketId(id);
+        setParticipants(prev => [...prev.filter(p => p.id !== id), { email, id }]);
+      }
     },
-    []
+    [room]
   );
 
   const handleCallUser = useCallback(async () => {
     if (!remoteSocketId) return;
     
     try {
+      setError(null);
       setIsCallInProgress(true);
-      await initializeLocalStream();
+      
+      // Ensure we have local stream
+      let stream = myStream;
+      if (!stream) {
+        stream = await initializeLocalStream();
+      }
+      
+      await PeerService.cleanup();
       await PeerService.initializePeer(room);
       PeerService.setRemotePeer(remoteSocketId);
       
-      if (myStream) {
-        await PeerService.addTracks(myStream);
+      if (stream) {
+        await PeerService.addTracks(stream);
       }
       
       const offer = await PeerService.createOffer();
-      socket.emit("user:call", { to: remoteSocketId, offer });
+      if (offer) {
+        socket.emit("user:call", { to: remoteSocketId, offer, room });
+      }
     } catch (error) {
       console.error("Error initiating call:", error);
       setError("Failed to start the call. Please try again.");
@@ -271,18 +275,26 @@ const RoomPage = () => {
 
   // Socket event listeners
   useEffect(() => {
-    socket.on("user:joined", handleUserJoined);
-    socket.on("incoming:call", handleIncomingCall);
-    socket.on("call:accepted", handleCallAccepted);
-    socket.on("peer:nego:needed", handleNegoIncoming);
-    socket.on("peer:nego:final", handleNegoFinal);
+    if (!socket) return;
+
+    const eventHandlers = {
+      "user:joined": handleUserJoined,
+      "incoming:call": handleIncomingCall,
+      "call:accepted": handleCallAccepted,
+      "peer:nego:needed": handleNegoIncoming,
+      "peer:nego:final": handleNegoFinal,
+    };
+
+    // Register event listeners
+    Object.entries(eventHandlers).forEach(([event, handler]) => {
+      socket.on(event, handler);
+    });
 
     return () => {
-      socket.off("user:joined", handleUserJoined);
-      socket.off("incoming:call", handleIncomingCall);
-      socket.off("call:accepted", handleCallAccepted);
-      socket.off("peer:nego:needed", handleNegoIncoming);
-      socket.off("peer:nego:final", handleNegoFinal);
+      // Cleanup event listeners
+      Object.entries(eventHandlers).forEach(([event, handler]) => {
+        socket.off(event, handler);
+      });
     };
   }, [socket, handleUserJoined, handleIncomingCall, handleCallAccepted, handleNegoIncoming, handleNegoFinal]);
 
@@ -305,23 +317,64 @@ const RoomPage = () => {
       setError(message);
     };
 
+    const handleReconnectCall = async () => {
+      if (remoteSocketId && myStream) {
+        try {
+          await PeerService.addTracks(myStream);
+          const offer = await PeerService.createOffer();
+          if (offer) {
+            socket.emit("user:call", { to: remoteSocketId, offer, room });
+            setIsCallInProgress(true);
+          }
+        } catch (error) {
+          console.error("❌ Reconnection call failed:", error);
+          setError("Reconnection failed. Please try again.");
+        }
+      }
+    };
+
+    // Add peer connection negotiation handler
+    const handleNegoNeeded = async () => {
+      if (PeerService.peer && remoteSocketId) {
+        try {
+          const offer = await PeerService.createOffer();
+          socket.emit("peer:nego:needed", { offer, to: remoteSocketId });
+        } catch (error) {
+          console.error("Error in negotiation needed:", error);
+        }
+      }
+    };
+
+    // Set up peer connection negotiation
+    if (PeerService.peer) {
+      PeerService.peer.onnegotiationneeded = handleNegoNeeded;
+    }
+
     PeerService.on("remoteStream", handleRemoteStream);
     PeerService.on("iceConnected", handleIceConnected);
     PeerService.on("error", handlePeerError);
+    PeerService.on("reconnectCall", handleReconnectCall);
 
     return () => {
       PeerService.off("remoteStream", handleRemoteStream);
       PeerService.off("iceConnected", handleIceConnected);
       PeerService.off("error", handlePeerError);
+      PeerService.off("reconnectCall", handleReconnectCall);
     };
-  }, []);
+  }, [socket, room, remoteSocketId, myStream]);
 
   // Join room on mount
   useEffect(() => {
     if (socket && room && user?.email) {
       socket.emit("room:join", { email: user.email, room });
+      PeerService.setSocket(socket);
+      
+      // Initialize local stream when joining room
+      initializeLocalStream().catch(error => {
+        console.error("Failed to initialize local stream:", error);
+      });
     }
-  }, [socket, room, user?.email]);
+  }, [socket, room, user?.email, initializeLocalStream]);
 
   // Mouse movement handler for showing controls
   useEffect(() => {
@@ -344,6 +397,52 @@ const RoomPage = () => {
       cleanupStreams();
     };
   }, [cleanupStreams]);
+
+  // Set local video stream when available
+  useEffect(() => {
+    if (localVideoRef.current && myStream) {
+      const videoElement = localVideoRef.current;
+      if (videoElement.srcObject !== myStream) {
+        videoElement.srcObject = myStream;
+        videoElement.play().catch((error) => {
+          console.error("❌ Error playing local video:", error);
+        });
+      }
+    }
+  }, [myStream]);
+
+  // Set remote video stream when available
+  useEffect(() => {
+    if (!remoteVideoRef.current || !remoteStream) return;
+
+    const videoElement = remoteVideoRef.current;
+    if (videoElement.srcObject !== remoteStream) {
+      videoElement.srcObject = remoteStream;
+    }
+
+    const attemptPlay = () => {
+      videoElement
+        .play()
+        .then(() => {
+          console.log("✅ Remote video playing successfully!");
+        })
+        .catch((error) => {
+          console.error("❌ Remote video play failed:", error.name);
+          // Try with muted if autoplay fails
+          videoElement.muted = true;
+          videoElement.play().catch((e) => {
+            console.error("❌ Even muted remote video failed:", e);
+          });
+        });
+    };
+
+    if (connectionState === "connected") {
+      attemptPlay();
+    } else {
+      const fallbackTimeout = setTimeout(attemptPlay, 2000);
+      return () => clearTimeout(fallbackTimeout);
+    }
+  }, [remoteStream, connectionState]);
 
   return (
     <div className="h-screen bg-gray-900 relative overflow-hidden">
