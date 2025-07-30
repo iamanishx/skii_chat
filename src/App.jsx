@@ -5,7 +5,7 @@ import './App.css'
 import { SocketProvider } from "./context/SocketProvider";
 import { AuthProvider } from "./context/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
-import RoomPage from './pages/RoomEnhanced';
+import RoomPage from './pages/Room';
 
 
 function App() {

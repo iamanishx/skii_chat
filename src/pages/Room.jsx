@@ -12,7 +12,6 @@ import {
   Copy,
   AlertCircle,
 } from "lucide-react";
-import { Alert, AlertDescription } from "../assets/ui/alert";
 import PeerService from "../service/peer";
 
 const RoomPage = () => {
@@ -338,138 +337,236 @@ const RoomPage = () => {
   }, [remoteStream, iceConnectionState]);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">
-        {/* Error Alert */}
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-2xl font-bold text-gray-800">Video Chat Room</h1>
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <input
-              type="text"
-              value={roomLink}
-              readOnly
-              className="bg-gray-50 px-4 py-2 rounded-lg text-sm flex-1 md:w-64"
-            />
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white relative overflow-hidden">
+      {/* Error Alert */}
+      {error && (
+        <div className="absolute top-4 left-4 right-4 z-50 bg-red-600/90 backdrop-blur-sm text-white p-4 rounded-xl shadow-lg border border-red-500/20">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{error}</span>
             <button
-              onClick={copyRoomLink}
-              className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors"
-              title="Copy room link"
+              onClick={() => setError(null)}
+              className="ml-auto text-white/80 hover:text-white transition-colors"
             >
-              {isCopied ? <Check size={20} /> : <Copy size={20} />}
+              ×
             </button>
           </div>
         </div>
+      )}
 
-        {/* Controls */}
-        <div className="flex justify-center gap-4 mb-6">
-          {myStream && (
-            <div className="flex gap-2">
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/60 via-black/30 to-transparent p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-1">Room: {room}</h1>
+            <p className="text-gray-300 text-sm">
+              {remoteSocketId ? "Connected with peer" : "Waiting for someone to join..."}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-black/40 backdrop-blur-sm rounded-lg overflow-hidden">
+              <input
+                type="text"
+                value={roomLink}
+                readOnly
+                className="bg-transparent px-4 py-2 text-sm text-white placeholder-gray-400 border-none outline-none w-64"
+                placeholder="Room link"
+              />
               <button
-                onClick={toggleAudio}
-                className={`p-3 rounded-full transition-colors ${
-                  isAudioEnabled
-                    ? "bg-blue-500 hover:bg-blue-600"
-                    : "bg-red-500 hover:bg-red-600"
-                } text-white`}
-                title={isAudioEnabled ? "Mute microphone" : "Unmute microphone"}
+                onClick={copyRoomLink}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 transition-colors flex items-center gap-2"
+                title="Copy room link"
               >
-                {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
-              </button>
-              <button
-                onClick={toggleVideo}
-                className={`p-3 rounded-full transition-colors ${
-                  isVideoEnabled
-                    ? "bg-blue-500 hover:bg-blue-600"
-                    : "bg-red-500 hover:bg-red-600"
-                } text-white`}
-                title={isVideoEnabled ? "Turn off camera" : "Turn on camera"}
-              >
-                {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-              </button>
-              <button
-                onClick={cleanupStreams}
-                className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors"
-                title="End call"
-              >
-                <PhoneOff size={20} />
+                {isCopied ? <Check size={16} /> : <Copy size={16} />}
+                <span className="text-sm">{isCopied ? "Copied!" : "Share"}</span>
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Video Container */}
+      <div className="h-screen flex items-center justify-center p-6 pt-32 pb-24">
+        <div className="w-full max-w-7xl mx-auto">
+          {/* Video Grid - 1:1 Aspect Ratio */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full max-h-[calc(100vh-200px)]">
+            {/* Local Video */}
+            {myStream && (
+              <div className="relative group">
+                <div className="aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 relative">
+                  <video
+                    ref={localVideoRef}
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                  {/* Video Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                  
+                  {/* Local Video Label */}
+                  <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
+                    <span className="text-white text-sm font-medium">You</span>
+                  </div>
+
+                  {/* Video State Indicators */}
+                  <div className="absolute top-4 right-4 flex gap-2">
+                    <div className={`p-2 rounded-lg backdrop-blur-sm ${!isVideoEnabled ? 'bg-red-500/80' : 'bg-gray-900/60'}`}>
+                      {isVideoEnabled ? (
+                        <Video className="w-4 h-4 text-white" />
+                      ) : (
+                        <VideoOff className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    <div className={`p-2 rounded-lg backdrop-blur-sm ${!isAudioEnabled ? 'bg-red-500/80' : 'bg-gray-900/60'}`}>
+                      {isAudioEnabled ? (
+                        <Mic className="w-4 h-4 text-white" />
+                      ) : (
+                        <MicOff className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Video disabled overlay */}
+                  {!isVideoEnabled && (
+                    <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mb-4 mx-auto">
+                          <VideoOff className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <p className="text-gray-400 text-sm">Camera is off</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Remote Video */}
+            <div className="relative group">
+              <div className="aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 relative">
+                {remoteStream ? (
+                  <>
+                    <video
+                      ref={remoteVideoRef}
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      playsInline
+                      muted={false}
+                    />
+                    {/* Video Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                    
+                    {/* Remote Video Label */}
+                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
+                      <span className="text-white text-sm font-medium">Remote</span>
+                    </div>
+
+                    {/* Connection Status */}
+                    <div className="absolute top-4 right-4">
+                      <div className={`px-3 py-1 rounded-lg backdrop-blur-sm text-xs font-medium ${
+                        iceConnectionState === "connected" 
+                          ? "bg-green-500/80 text-white" 
+                          : "bg-yellow-500/80 text-white"
+                      }`}>
+                        {iceConnectionState === "connected" ? "Connected" : "Connecting..."}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center mb-6 mx-auto">
+                        <Video className="w-12 h-12 text-gray-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-white mb-2">
+                        {remoteSocketId ? "Connecting..." : "Waiting for peer"}
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        {remoteSocketId ? "Setting up video connection" : "Share the room link to invite others"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Controls */}
+      <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6">
+        <div className="flex justify-center items-center gap-4">
+          {myStream && (
+            <>
+              {/* Audio Control */}
+              <button
+                onClick={toggleAudio}
+                className={`p-4 rounded-full transition-all duration-200 shadow-lg backdrop-blur-sm ${
+                  isAudioEnabled
+                    ? "bg-gray-800/80 hover:bg-gray-700/80 text-white border border-gray-600/50"
+                    : "bg-red-600/80 hover:bg-red-700/80 text-white border border-red-500/50"
+                }`}
+                title={isAudioEnabled ? "Mute microphone" : "Unmute microphone"}
+              >
+                {isAudioEnabled ? <Mic size={24} /> : <MicOff size={24} />}
+              </button>
+
+              {/* Video Control */}
+              <button
+                onClick={toggleVideo}
+                className={`p-4 rounded-full transition-all duration-200 shadow-lg backdrop-blur-sm ${
+                  isVideoEnabled
+                    ? "bg-gray-800/80 hover:bg-gray-700/80 text-white border border-gray-600/50"
+                    : "bg-red-600/80 hover:bg-red-700/80 text-white border border-red-500/50"
+                }`}
+                title={isVideoEnabled ? "Turn off camera" : "Turn on camera"}
+              >
+                {isVideoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+              </button>
+
+              {/* End Call */}
+              <button
+                onClick={cleanupStreams}
+                className="p-4 rounded-full bg-red-600/80 hover:bg-red-700/80 text-white transition-all duration-200 shadow-lg backdrop-blur-sm border border-red-500/50"
+                title="End call"
+              >
+                <PhoneOff size={24} />
+              </button>
+            </>
           )}
 
+          {/* Start Call Button */}
           {remoteSocketId && !myStream && (
             <button
               onClick={handleCallUser}
               disabled={isCallInProgress}
-              className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-4 bg-green-600/80 hover:bg-green-700/80 text-white rounded-full transition-all duration-200 flex items-center gap-3 shadow-lg backdrop-blur-sm border border-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Phone size={20} />
-              {isCallInProgress ? "Calling..." : "Start Call"}
+              <Phone size={24} />
+              <span className="font-medium">
+                {isCallInProgress ? "Starting Call..." : "Start Call"}
+              </span>
             </button>
           )}
         </div>
 
-        {/* Video Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {myStream && (
-            <div className="relative">
-              <h2 className="text-lg font-semibold mb-2">Your Video</h2>
-              <video
-                ref={localVideoRef}
-                className="rounded-lg bg-gray-900 w-full"
-                height="300"
-                autoPlay
-                playsInline
-                muted
-              />
-            </div>
-          )}
-
-          {remoteStream && (
-            <div className="relative">
-              <h2 className="text-lg font-semibold mb-2">Remote Video</h2>
-              <video
-                ref={remoteVideoRef}
-                className="rounded-lg bg-gray-900 w-full"
-                autoPlay
-                playsInline
-                muted={false}
-                style={{
-                  minHeight: "240px",
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Status */}
-        <div className="text-center text-gray-600">
-          <div className="flex justify-center items-center gap-4 text-sm">
-            <span>
-              ICE:{" "}
-              <span
-                className={`font-bold ${
-                  iceConnectionState === "connected"
-                    ? "text-green-600"
-                    : "text-orange-500"
-                }`}
-              >
-                {iceConnectionState}
+        {/* Connection Status Bar */}
+        <div className="flex justify-center mt-4">
+          <div className="bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg border border-gray-700/50">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-gray-300">
+                ICE: <span className={`font-medium ${
+                  iceConnectionState === "connected" ? "text-green-400" : "text-yellow-400"
+                }`}>
+                  {iceConnectionState}
+                </span>
               </span>
-            </span>
-            <span>•</span>
-            <span>
-              {remoteSocketId
-                ? "Connected with peer"
-                : "Waiting for someone to join..."}
-            </span>
+              <span className="text-gray-500">•</span>
+              <span className="text-gray-300">
+                Room: <span className="font-medium text-white">{room}</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
