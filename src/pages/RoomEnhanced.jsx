@@ -273,12 +273,6 @@ const RoomPage = () => {
     }
   }, [remoteSocketId, socket, room, myStream, initializeLocalStream]);
 
-  // Automatically start call when a peer joins
-  useEffect(() => {
-    if (remoteSocketId && !isCallInProgress) {
-      handleCallUser();
-    }
-  }, [remoteSocketId, isCallInProgress, handleCallUser]);
 
   // Socket event listeners
   useEffect(() => {
@@ -288,8 +282,6 @@ const RoomPage = () => {
       "user:joined": handleUserJoined,
       "incoming:call": handleIncomingCall,
       "call:accepted": handleCallAccepted,
-      "peer:nego:needed": handleNegoIncoming,
-      "peer:nego:final": handleNegoFinal,
     };
 
     // Register event listeners
@@ -324,49 +316,14 @@ const RoomPage = () => {
       setError(message);
     };
 
-    const handleReconnectCall = async () => {
-      if (remoteSocketId && myStream) {
-        try {
-          await PeerService.addTracks(myStream);
-          const offer = await PeerService.createOffer();
-          if (offer) {
-            socket.emit("user:call", { to: remoteSocketId, offer, room });
-            setIsCallInProgress(true);
-          }
-        } catch (error) {
-          console.error("❌ Reconnection call failed:", error);
-          setError("Reconnection failed. Please try again.");
-        }
-      }
-    };
-
-    // Add peer connection negotiation handler
-    const handleNegoNeeded = async () => {
-      if (PeerService.peer && remoteSocketId) {
-        try {
-          const offer = await PeerService.createOffer();
-          socket.emit("peer:nego:needed", { offer, to: remoteSocketId });
-        } catch (error) {
-          console.error("Error in negotiation needed:", error);
-        }
-      }
-    };
-
-    // Set up peer connection negotiation
-    if (PeerService.peer) {
-      PeerService.peer.onnegotiationneeded = handleNegoNeeded;
-    }
-
     PeerService.on("remoteStream", handleRemoteStream);
     PeerService.on("iceConnected", handleIceConnected);
     PeerService.on("error", handlePeerError);
-    PeerService.on("reconnectCall", handleReconnectCall);
 
     return () => {
       PeerService.off("remoteStream", handleRemoteStream);
       PeerService.off("iceConnected", handleIceConnected);
       PeerService.off("error", handlePeerError);
-      PeerService.off("reconnectCall", handleReconnectCall);
     };
   }, [socket, room, remoteSocketId, myStream]);
 
