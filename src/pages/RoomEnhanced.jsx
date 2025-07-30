@@ -1,8 +1,8 @@
 import { useEffect, useCallback, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useSocket } from "../context/SocketProvider";
-import { useAuth } from "../context/AuthProvider";
 import {
+  Check,
   Mic,
   MicOff,
   Video,
@@ -10,49 +10,27 @@ import {
   Phone,
   PhoneOff,
   Copy,
-  Users,
-  Settings,
-  Monitor,
-  MoreVertical,
-  ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 import PeerService from "../service/peer";
 
 const RoomPage = () => {
   const socket = useSocket();
   const { room } = useParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
 
-  // Stream and connection states
   const [remoteSocketId, setRemoteSocketId] = useState(null);
   const [myStream, setMyStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-  const [isCallInProgress, setIsCallInProgress] = useState(false);
-  const [connectionState, setConnectionState] = useState("new");
-  
-  // UI states
+  const [roomLink, setRoomLink] = useState("");
   const [isCopied, setIsCopied] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [isCallInProgress, setIsCallInProgress] = useState(false);
   const [error, setError] = useState(null);
-  const [participants, setParticipants] = useState([]);
+  const [iceConnectionState, setIceConnectionState] = useState("new");
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const controlsTimeoutRef = useRef(null);
-
-  // Auto-hide controls after 3 seconds of inactivity
-  const resetControlsTimeout = useCallback(() => {
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-    setShowControls(true);
-    controlsTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3000);
-  }, []);
 
   const validateStream = useCallback((stream) => {
     if (!stream) {
@@ -80,27 +58,31 @@ const RoomPage = () => {
 
       if (validateStream(stream)) {
         setMyStream(stream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
+        return stream;
       } else {
-        throw new Error("Invalid stream received");
+        throw new Error("Invalid local stream.");
       }
     } catch (error) {
       console.error("Error accessing media devices:", error);
-      setError("Failed to access camera and microphone. Please check your permissions.");
+      setError(
+        "Failed to access camera and microphone. Please check your permissions."
+      );
       throw error;
     }
   }, [validateStream]);
 
   const cleanupStreams = useCallback(() => {
     if (myStream) {
-      myStream.getTracks().forEach((track) => track.stop());
+      myStream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      setMyStream(null);
     }
+
     PeerService.cleanup();
     setRemoteStream(null);
     setIsCallInProgress(false);
-    setConnectionState("new");
+    setIceConnectionState("new");
   }, [myStream]);
 
   // Media Controls
@@ -124,155 +106,108 @@ const RoomPage = () => {
     }
   }, [myStream]);
 
-  const endCall = useCallback(() => {
-    cleanupStreams();
-    navigate("/home");
-  }, [cleanupStreams, navigate]);
-
-  const copyRoomLink = useCallback(async () => {
-    try {
-      const link = `${window.location.origin}/room/${room}`;
-      await navigator.clipboard.writeText(link);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy room link:", err);
-    }
-  }, [room]);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  }, []);
-
   // Call Management
+  // In handleIncomingCall:
   const handleIncomingCall = useCallback(
     async ({ from, offer }) => {
       try {
         setError(null);
         setRemoteSocketId(from);
-        setIsCallInProgress(true);
-        
-        // Ensure we have local stream
-        let stream = myStream;
-        if (!stream) {
-          stream = await initializeLocalStream();
-        }
-        
+        const stream = await initializeLocalStream();
+
         await PeerService.cleanup();
         await PeerService.initializePeer(room);
-        PeerService.setRemotePeer(from);
-        
-        if (stream) {
-          await PeerService.addTracks(stream);
-        }
-        
+        PeerService.setRemotePeer(from); 
+        await PeerService.addTracks(stream);
+
         const answer = await PeerService.createAnswer(offer);
         if (answer) {
           socket.emit("call:accepted", { to: from, answer, room });
+          setIsCallInProgress(true);
         }
       } catch (error) {
-        console.error("Error handling incoming call:", error);
-        setError("Failed to accept the call. Please try again.");
+        console.error("❌ Error in handleIncomingCall:", error);
+        setError("Failed to accept call. Please try again.");
         cleanupStreams();
       }
     },
-    [socket, room, myStream, initializeLocalStream, cleanupStreams]
+    [socket, room, initializeLocalStream, cleanupStreams]
   );
 
-  const sendStreams = useCallback(async () => {
-    if (myStream && PeerService.peer) {
-      try {
-        await PeerService.addTracks(myStream);
-      } catch (error) {
-        console.error("Error sending streams:", error);
-        setError("Failed to send video stream.");
-      }
+  // In handleCallUser:
+  const handleCallUser = useCallback(async () => {
+    if (!remoteSocketId) {
+      setError("No peer available to call");
+      return;
     }
-  }, [myStream]);
+
+    try {
+      setError(null);
+      const stream = await initializeLocalStream();
+      await PeerService.initializePeer(room);
+      PeerService.setRemotePeer(remoteSocketId); 
+      await PeerService.addTracks(stream);
+
+      const offer = await PeerService.createOffer();
+      if (offer) {
+        socket.emit("user:call", { to: remoteSocketId, offer, room });
+        setIsCallInProgress(true);
+      }
+    } catch (error) {
+      console.error("❌ Error in handleCallUser:", error);
+      setError("Failed to start call. Please try again.");
+      cleanupStreams();
+    }
+  }, [remoteSocketId, room, socket, initializeLocalStream, cleanupStreams]);
 
   const handleCallAccepted = useCallback(
     async ({ answer }) => {
       try {
         await PeerService.setRemoteDescription(answer);
-        await sendStreams();
       } catch (error) {
-        console.error("Error handling call accepted:", error);
-        setError("Connection failed. Please try again.");
+        console.error("❌ Error in handleCallAccepted:", error);
+        setError("Failed to establish connection. Please try again.");
+        cleanupStreams();
       }
     },
-    [sendStreams]
+    [cleanupStreams]
   );
 
-  const handleNegoIncoming = useCallback(
-    async ({ from, offer }) => {
-      try {
-        const answer = await PeerService.createAnswer(offer);
-        socket.emit("peer:nego:done", { to: from, answer });
-      } catch (error) {
-        console.error("Error handling incoming negotiation:", error);
-      }
-    },
-    [socket]
-  );
-
-  const handleNegoFinal = useCallback(
-    async ({ answer }) => {
-      try {
-        await PeerService.setRemoteDescription(answer);
-      } catch (error) {
-        console.error("Error in final negotiation:", error);
-      }
-    },
-    []
-  );
-
+  // Socket Event Handlers
   const handleUserJoined = useCallback(
-    ({ email, id, room: joinedRoom }) => {
-      console.log(`User ${email} joined with ID: ${id}`);
-      if (joinedRoom === room) {
-        setRemoteSocketId(id);
-        setParticipants(prev => [...prev.filter(p => p.id !== id), { email, id }]);
-      }
-    },
-    [room]
-  );
-
-  const handleCallUser = useCallback(async () => {
-    if (!remoteSocketId) return;
-    
-    try {
-      setError(null);
-      setIsCallInProgress(true);
-      
-      // Ensure we have local stream
-      let stream = myStream;
-      if (!stream) {
-        stream = await initializeLocalStream();
-      }
-      
-      await PeerService.cleanup();
-      await PeerService.initializePeer(room);
-      PeerService.setRemotePeer(remoteSocketId);
-      
-      if (stream) {
-        await PeerService.addTracks(stream);
-      }
-      
-      const offer = await PeerService.createOffer();
-      if (offer) {
-        socket.emit("user:call", { to: remoteSocketId, offer, room });
-      }
-    } catch (error) {
-      console.error("Error initiating call:", error);
-      setError("Failed to start the call. Please try again.");
-      setIsCallInProgress(false);
+  ({ id, room: joinedRoom }) => {    
+    if (joinedRoom === room) {
+      setRemoteSocketId(id);
     }
-  }, [remoteSocketId, socket, room, myStream, initializeLocalStream]);
+  },
+  [room]
+);
+  const handleCallEnded = useCallback(() => {
+    cleanupStreams();
+  }, [cleanupStreams]);
 
+  // UI Helpers
+  const copyRoomLink = useCallback(() => {
+    navigator.clipboard.writeText(roomLink);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  }, [roomLink]);
+
+  // Effects
+  // Initialize room connection
+  useEffect(() => {
+    if (socket && room) {
+      const email =
+        localStorage.getItem("userEmail") || `user-${Date.now()}@example.com`;
+      socket.emit("room:join", { room, email });
+      PeerService.setSocket(socket);
+      setRoomLink(window.location.href);
+    }
+    return () => {
+      cleanupStreams();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, room]);
 
   // Socket event listeners
   useEffect(() => {
@@ -282,6 +217,7 @@ const RoomPage = () => {
       "user:joined": handleUserJoined,
       "incoming:call": handleIncomingCall,
       "call:accepted": handleCallAccepted,
+      "call:ended": handleCallEnded,
     };
 
     // Register event listeners
@@ -295,86 +231,70 @@ const RoomPage = () => {
         socket.off(event, handler);
       });
     };
-  }, [socket, handleUserJoined, handleIncomingCall, handleCallAccepted, handleNegoIncoming, handleNegoFinal]);
-
-  // Auto-initiate call when a remote peer ID is set
-  useEffect(() => {
-    if (remoteSocketId && !isCallInProgress) {
-      handleCallUser();
-    }
-  }, [remoteSocketId, isCallInProgress, handleCallUser]);
+  }, [
+    socket,
+    handleUserJoined,
+    handleIncomingCall,
+    handleCallAccepted,
+    handleCallEnded,
+  ]);
 
   // PeerService event listeners
-  useEffect(() => {
-    const handleRemoteStream = ({ stream }) => {
-      console.log("Received remote stream");
-      setRemoteStream(stream);
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream;
+ useEffect(() => {
+  const handlePeerError = ({ type, message }) => {
+    console.error(`💥 Peer error (${type}):`, message);
+    setError(`Connection error: ${message}`);
+  };
+
+  const handleRemoteStream = ({ stream }) => {
+    setRemoteStream(stream);
+  };
+
+  const handleICEConnected = () => {
+    setIceConnectionState("connected");
+  };
+
+  const handleReconnectCall = async () => {
+  if (remoteSocketId && myStream) {
+    try {
+      await PeerService.addTracks(myStream);
+      const offer = await PeerService.createOffer();
+      if (offer) {
+        socket.emit("user:call", { to: remoteSocketId, offer, room });
+        setIsCallInProgress(true); 
       }
-    };
-
-    const handleIceConnected = () => {
-      setConnectionState("connected");
-      setError(null);
-    };
-
-    const handlePeerError = ({ message }) => {
-      setError(message);
-    };
-
-    PeerService.on("remoteStream", handleRemoteStream);
-    PeerService.on("iceConnected", handleIceConnected);
-    PeerService.on("error", handlePeerError);
-
-    return () => {
-      PeerService.off("remoteStream", handleRemoteStream);
-      PeerService.off("iceConnected", handleIceConnected);
-      PeerService.off("error", handlePeerError);
-    };
-  }, [socket, room, remoteSocketId, myStream]);
-
-  // Join room on mount
-  useEffect(() => {
-    if (socket && room && user?.email) {
-      socket.emit("room:join", { email: user.email, room });
-      PeerService.setSocket(socket);
-      
-      // Initialize local stream when joining room
-      initializeLocalStream().catch(error => {
-        console.error("Failed to initialize local stream:", error);
-      });
+    } catch (error) {
+      console.error("❌ Reconnection call failed:", error);
+      setError("Reconnection failed. Please try again."); 
     }
-  }, [socket, room, user?.email, initializeLocalStream]);
+  } 
+};
 
-  // Mouse movement handler for showing controls
-  useEffect(() => {
-    const handleMouseMove = () => resetControlsTimeout();
-    
-    document.addEventListener("mousemove", handleMouseMove);
-    resetControlsTimeout();
-    
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-    };
-  }, [resetControlsTimeout]);
+  const events = [
+    ["error", handlePeerError],
+    ["remoteStream", handleRemoteStream],
+    ["iceConnected", handleICEConnected],
+    ["reconnectCall", handleReconnectCall], // ADD THIS LINE
+  ];
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanupStreams();
-    };
-  }, [cleanupStreams]);
+  events.forEach(([event, handler]) => {
+    PeerService.on(event, handler);
+  });
 
-  // Set local video stream when available
+  return () => {
+    events.forEach(([event, handler]) => {
+      PeerService.off(event, handler);
+    });
+  };
+}, [remoteSocketId, myStream, socket, room]);
+
   useEffect(() => {
     if (localVideoRef.current && myStream) {
       const videoElement = localVideoRef.current;
+
       if (videoElement.srcObject !== myStream) {
         videoElement.srcObject = myStream;
+
         videoElement.play().catch((error) => {
           console.error("❌ Error playing local video:", error);
         });
@@ -382,11 +302,10 @@ const RoomPage = () => {
     }
   }, [myStream]);
 
-  // Set remote video stream when available
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
 
-    const videoElement = remoteVideoRef.current;
+    const videoElement = remoteVideoRef.current;  
     if (videoElement.srcObject !== remoteStream) {
       videoElement.srcObject = remoteStream;
     }
@@ -399,204 +318,258 @@ const RoomPage = () => {
         })
         .catch((error) => {
           console.error("❌ Remote video play failed:", error.name);
-          // Try with muted if autoplay fails
+
+          videoElement.controls = true;
           videoElement.muted = true;
+
           videoElement.play().catch((e) => {
             console.error("❌ Even muted remote video failed:", e);
           });
         });
     };
 
-    if (connectionState === "connected") {
+    if (iceConnectionState === "connected") {
       attemptPlay();
     } else {
       const fallbackTimeout = setTimeout(attemptPlay, 2000);
       return () => clearTimeout(fallbackTimeout);
     }
-  }, [remoteStream, connectionState]);
+  }, [remoteStream, iceConnectionState]);
 
   return (
-    <div className="h-screen bg-gray-900 relative overflow-hidden">
-      {/* Header */}
-      <div className={`absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/60 to-transparent p-4 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white relative overflow-hidden">
+      {/* Error Alert */}
+      {error && (
+        <div className="absolute top-4 left-4 right-4 z-50 bg-red-600/90 backdrop-blur-sm text-white p-4 rounded-xl shadow-lg border border-red-500/20">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{error}</span>
             <button
-              onClick={() => navigate("/home")}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              onClick={() => setError(null)}
+              className="ml-auto text-white/80 hover:text-white transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 text-white" />
+              ×
             </button>
-            <div>
-              <h1 className="text-white font-semibold">Room: {room}</h1>
-              <p className="text-gray-300 text-sm">{participants.length + 1} participant{participants.length !== 0 ? 's' : ''}</p>
-            </div>
           </div>
-          
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={copyRoomLink}
-              className="flex items-center space-x-2 bg-blue-600/80 hover:bg-blue-600 text-white px-3 py-2 rounded-lg transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              <span className="text-sm">{isCopied ? "Copied!" : "Share"}</span>
-            </button>
-            <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-              <MoreVertical className="w-5 h-5 text-white" />
-            </button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/60 via-black/30 to-transparent p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-1">Room: {room}</h1>
+            <p className="text-gray-300 text-sm">
+              {remoteSocketId ? "Connected with peer" : "Waiting for someone to join..."}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-black/40 backdrop-blur-sm rounded-lg overflow-hidden">
+              <input
+                type="text"
+                value={roomLink}
+                readOnly
+                className="bg-transparent px-4 py-2 text-sm text-white placeholder-gray-400 border-none outline-none w-64"
+                placeholder="Room link"
+              />
+              <button
+                onClick={copyRoomLink}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 transition-colors flex items-center gap-2"
+                title="Copy room link"
+              >
+                {isCopied ? <Check size={16} /> : <Copy size={16} />}
+                <span className="text-sm">{isCopied ? "Copied!" : "Share"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Video Area */}
-      <div className="h-full relative">
-        {/* Remote Video (Main) */}
-        {remoteStream ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-800">
-            <div className="text-center">
-              <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <h2 className="text-white text-xl font-semibold mb-2">
-                {remoteSocketId ? "Connecting..." : "Waiting for others to join"}
-              </h2>
-              <p className="text-gray-400">
-                {remoteSocketId ? "Setting up video connection" : "Share the room link to invite others"}
-              </p>
-            </div>
-          </div>
-        )}
+      {/* Main Video Container */}
+      <div className="h-screen flex items-center justify-center p-6 pt-32 pb-24">
+        <div className="w-full max-w-7xl mx-auto">
+          {/* Video Grid - 1:1 Aspect Ratio */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full max-h-[calc(100vh-200px)]">
+            {/* Local Video */}
+            {myStream && (
+              <div className="relative group">
+                <div className="aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 relative">
+                  <video
+                    ref={localVideoRef}
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                  {/* Video Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                  
+                  {/* Local Video Label */}
+                  <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
+                    <span className="text-white text-sm font-medium">You</span>
+                  </div>
 
-        {/* Local Video (Picture-in-Picture) */}
-        <div className="absolute top-20 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 border-gray-700">
-          {myStream ? (
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Video className="w-8 h-8 text-gray-500" />
-            </div>
-          )}
-          
-          {/* Local video controls overlay */}
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1">
-            <div className={`p-1 rounded ${!isVideoEnabled ? 'bg-red-500' : 'bg-gray-700'}`}>
-              {isVideoEnabled ? (
-                <Video className="w-3 h-3 text-white" />
-              ) : (
-                <VideoOff className="w-3 h-3 text-white" />
-              )}
-            </div>
-            <div className={`p-1 rounded ${!isAudioEnabled ? 'bg-red-500' : 'bg-gray-700'}`}>
-              {isAudioEnabled ? (
-                <Mic className="w-3 h-3 text-white" />
-              ) : (
-                <MicOff className="w-3 h-3 text-white" />
-              )}
+                  {/* Video State Indicators */}
+                  <div className="absolute top-4 right-4 flex gap-2">
+                    <div className={`p-2 rounded-lg backdrop-blur-sm ${!isVideoEnabled ? 'bg-red-500/80' : 'bg-gray-900/60'}`}>
+                      {isVideoEnabled ? (
+                        <Video className="w-4 h-4 text-white" />
+                      ) : (
+                        <VideoOff className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    <div className={`p-2 rounded-lg backdrop-blur-sm ${!isAudioEnabled ? 'bg-red-500/80' : 'bg-gray-900/60'}`}>
+                      {isAudioEnabled ? (
+                        <Mic className="w-4 h-4 text-white" />
+                      ) : (
+                        <MicOff className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Video disabled overlay */}
+                  {!isVideoEnabled && (
+                    <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mb-4 mx-auto">
+                          <VideoOff className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <p className="text-gray-400 text-sm">Camera is off</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Remote Video */}
+            <div className="relative group">
+              <div className="aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 relative">
+                {remoteStream ? (
+                  <>
+                    <video
+                      ref={remoteVideoRef}
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      playsInline
+                      muted={false}
+                    />
+                    {/* Video Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                    
+                    {/* Remote Video Label */}
+                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
+                      <span className="text-white text-sm font-medium">Remote</span>
+                    </div>
+
+                    {/* Connection Status */}
+                    <div className="absolute top-4 right-4">
+                      <div className={`px-3 py-1 rounded-lg backdrop-blur-sm text-xs font-medium ${
+                        iceConnectionState === "connected" 
+                          ? "bg-green-500/80 text-white" 
+                          : "bg-yellow-500/80 text-white"
+                      }`}>
+                        {iceConnectionState === "connected" ? "Connected" : "Connecting..."}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center mb-6 mx-auto">
+                        <Video className="w-12 h-12 text-gray-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-white mb-2">
+                        {remoteSocketId ? "Connecting..." : "Waiting for peer"}
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        {remoteSocketId ? "Setting up video connection" : "Share the room link to invite others"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Bottom Controls */}
-      <div className={`absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/60 to-transparent p-6 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="flex justify-center items-center space-x-4">
-          {/* Audio Toggle */}
-          <button
-            onClick={toggleAudio}
-            className={`p-4 rounded-full transition-all duration-200 ${
-              isAudioEnabled
-                ? "bg-gray-700 hover:bg-gray-600 text-white"
-                : "bg-red-600 hover:bg-red-700 text-white"
-            }`}
-          >
-            {isAudioEnabled ? (
-              <Mic className="w-6 h-6" />
-            ) : (
-              <MicOff className="w-6 h-6" />
-            )}
-          </button>
+      <div className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6">
+        <div className="flex justify-center items-center gap-4">
+          {myStream && (
+            <>
+              {/* Audio Control */}
+              <button
+                onClick={toggleAudio}
+                className={`p-4 rounded-full transition-all duration-200 shadow-lg backdrop-blur-sm ${
+                  isAudioEnabled
+                    ? "bg-gray-800/80 hover:bg-gray-700/80 text-white border border-gray-600/50"
+                    : "bg-red-600/80 hover:bg-red-700/80 text-white border border-red-500/50"
+                }`}
+                title={isAudioEnabled ? "Mute microphone" : "Unmute microphone"}
+              >
+                {isAudioEnabled ? <Mic size={24} /> : <MicOff size={24} />}
+              </button>
 
-          {/* Video Toggle */}
-          <button
-            onClick={toggleVideo}
-            className={`p-4 rounded-full transition-all duration-200 ${
-              isVideoEnabled
-                ? "bg-gray-700 hover:bg-gray-600 text-white"
-                : "bg-red-600 hover:bg-red-700 text-white"
-            }`}
-          >
-            {isVideoEnabled ? (
-              <Video className="w-6 h-6" />
-            ) : (
-              <VideoOff className="w-6 h-6" />
-            )}
-          </button>
+              {/* Video Control */}
+              <button
+                onClick={toggleVideo}
+                className={`p-4 rounded-full transition-all duration-200 shadow-lg backdrop-blur-sm ${
+                  isVideoEnabled
+                    ? "bg-gray-800/80 hover:bg-gray-700/80 text-white border border-gray-600/50"
+                    : "bg-red-600/80 hover:bg-red-700/80 text-white border border-red-500/50"
+                }`}
+                title={isVideoEnabled ? "Turn off camera" : "Turn on camera"}
+              >
+                {isVideoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+              </button>
 
-          {/* Call/End Call Button */}
-          {remoteSocketId && !isCallInProgress ? (
+              {/* End Call */}
+              <button
+                onClick={cleanupStreams}
+                className="p-4 rounded-full bg-red-600/80 hover:bg-red-700/80 text-white transition-all duration-200 shadow-lg backdrop-blur-sm border border-red-500/50"
+                title="End call"
+              >
+                <PhoneOff size={24} />
+              </button>
+            </>
+          )}
+
+          {/* Start Call Button */}
+          {remoteSocketId && !myStream && (
             <button
               onClick={handleCallUser}
-              className="p-4 rounded-full bg-green-600 hover:bg-green-700 text-white transition-all duration-200"
+              disabled={isCallInProgress}
+              className="px-8 py-4 bg-green-600/80 hover:bg-green-700/80 text-white rounded-full transition-all duration-200 flex items-center gap-3 shadow-lg backdrop-blur-sm border border-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Phone className="w-6 h-6" />
+              <Phone size={24} />
+              <span className="font-medium">
+                {isCallInProgress ? "Starting Call..." : "Start Call"}
+              </span>
             </button>
-          ) : isCallInProgress ? (
-            <button
-              onClick={endCall}
-              className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
-            >
-              <PhoneOff className="w-6 h-6" />
-            </button>
-          ) : null}
-
-          {/* Screen Share */}
-          <button
-            onClick={toggleFullscreen}
-            className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-all duration-200"
-          >
-            <Monitor className="w-6 h-6" />
-          </button>
-
-          {/* Settings */}
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-all duration-200">
-            <Settings className="w-6 h-6" />
-          </button>
+          )}
         </div>
-      </div>
 
-      {/* Connection Status */}
-      {connectionState !== "connected" && isCallInProgress && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-6 py-4 rounded-lg">
-          <div className="flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-            <span>Connecting...</span>
+        {/* Connection Status Bar */}
+        <div className="flex justify-center mt-4">
+          <div className="bg-black/40 backdrop-blur-sm px-4 py-2 rounded-lg border border-gray-700/50">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-gray-300">
+                ICE: <span className={`font-medium ${
+                  iceConnectionState === "connected" ? "text-green-400" : "text-yellow-400"
+                }`}>
+                  {iceConnectionState}
+                </span>
+              </span>
+              <span className="text-gray-500">•</span>
+              <span className="text-gray-300">
+                Room: <span className="font-medium text-white">{room}</span>
+              </span>
+            </div>
           </div>
         </div>
-      )}
-
-      {/* Error Display */}
-      {error && (
-        <div className="absolute top-24 left-4 right-4 bg-red-600/90 text-white p-4 rounded-lg flex items-center justify-between">
-          <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-white hover:text-gray-200"
-          >
-            ×
-          </button>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
