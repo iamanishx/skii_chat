@@ -297,6 +297,13 @@ const RoomPage = () => {
     };
   }, [socket, handleUserJoined, handleIncomingCall, handleCallAccepted, handleNegoIncoming, handleNegoFinal]);
 
+  // Auto-initiate call when a remote peer ID is set
+  useEffect(() => {
+    if (remoteSocketId && !isCallInProgress) {
+      handleCallUser();
+    }
+  }, [remoteSocketId, isCallInProgress, handleCallUser]);
+
   // PeerService event listeners
   useEffect(() => {
     const handleRemoteStream = ({ stream }) => {
