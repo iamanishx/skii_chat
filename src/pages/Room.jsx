@@ -154,7 +154,7 @@ const RoomPage = () => {
         setIsCallInProgress(true);
       }
     } catch (error) {
-      console.error("❌ Error in handleCallUser:", error);
+      console.error("Error in handleCallUser:", error);
       setError("Failed to start call. Please try again.");
       cleanupStreams();
     }
@@ -165,7 +165,7 @@ const RoomPage = () => {
       try {
         await PeerService.setRemoteDescription(answer);
       } catch (error) {
-        console.error("❌ Error in handleCallAccepted:", error);
+        console.error("Error in handleCallAccepted:", error);
         setError("Failed to establish connection. Please try again.");
         cleanupStreams();
       }
@@ -242,7 +242,7 @@ const RoomPage = () => {
   // PeerService event listeners
  useEffect(() => {
   const handlePeerError = ({ type, message }) => {
-    console.error(`💥 Peer error (${type}):`, message);
+    console.error(`Peer error (${type}):`, message);
     setError(`Connection error: ${message}`);
   };
 
@@ -264,7 +264,7 @@ const RoomPage = () => {
         setIsCallInProgress(true); 
       }
     } catch (error) {
-      console.error("❌ Reconnection call failed:", error);
+      console.error("Reconnection call failed:", error);
       setError("Reconnection failed. Please try again."); 
     }
   } 
@@ -296,7 +296,7 @@ const RoomPage = () => {
         videoElement.srcObject = myStream;
 
         videoElement.play().catch((error) => {
-          console.error("❌ Error playing local video:", error);
+          console.error("Error playing local video:", error);
         });
       }
     }
@@ -314,16 +314,16 @@ const RoomPage = () => {
       videoElement
         .play()
         .then(() => {
-          console.log("✅ Remote video playing successfully!");
+          console.log("Remote video playing successfully!");
         })
         .catch((error) => {
-          console.error("❌ Remote video play failed:", error.name);
+          console.error("Remote video play failed:", error.name);
 
           videoElement.controls = true;
           videoElement.muted = true;
 
           videoElement.play().catch((e) => {
-            console.error("❌ Even muted remote video failed:", e);
+            console.error("Even muted remote video failed:", e);
           });
         });
     };
