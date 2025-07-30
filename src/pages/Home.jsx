@@ -1,43 +1,16 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../context/SocketProvider";
+import { useAuth } from "../context/AuthProvider";
 
 const Home = () => {
-  const [email, setEmail] = useState(""); 
   const [room, setRoom] = useState(""); 
   const [manualRoom, setManualRoom] = useState(""); 
   const [view, setView] = useState("create");
 
   const socket = useSocket();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const fetchEmail = async () => {
-      try {
-        const url = import.meta.env.VITE_API_URL;
-        const response = await fetch(
-          `${url}`,
-          {
-            credentials: "include", 
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        const data = await response.json();
-        if (response.ok && data.email) {
-          setEmail(data.email); 
-          console.log("Email fetched:", data.email);
-        } else {
-          console.error("Failed to fetch email");
-        }
-      } catch (error) {
-        console.error("Error fetching email:", error);
-      }
-    };
-
-    fetchEmail();
-  }, []);
+  const { user, logout } = useAuth();
 
   // Generate room ID when the user enters the lobby
   useEffect(() => {
@@ -47,17 +20,22 @@ const Home = () => {
     }
   }, [room]);
 
+  const generateNewRoom = () => {
+    const newRoom = Math.random().toString(36).substring(2, 10);
+    setRoom(newRoom);
+  };
+
   const handleSubmitForm = useCallback(
     (e) => {
       e.preventDefault();
       const selectedRoom = manualRoom || room; 
-      if (email && selectedRoom) {
-        socket.emit("room:join", { email, room: selectedRoom });
+      if (user?.email && selectedRoom) {
+        socket.emit("room:join", { email: user.email, room: selectedRoom });
       } else {
         console.error("Email or room is missing");
       }
     },
-    [email, room, manualRoom, socket]
+    [user?.email, room, manualRoom, socket]
   );
 
   const handleJoinRoom = useCallback(
@@ -75,128 +53,159 @@ const Home = () => {
     };
   }, [socket, handleJoinRoom]);
 
-  const handleCopyRoom = () => {
-    navigator.clipboard.writeText(room);
-    alert("Room ID copied to clipboard!");
+  const handleCopyRoom = async () => {
+    try {
+      await navigator.clipboard.writeText(room);
+      // You could add a toast notification here instead of alert
+      alert("Room ID copied to clipboard!");
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-800 to-black flex items-center justify-center text-white">
-      <div className="bg-gray-900 p-8 rounded-xl shadow-2xl w-96">
-        <h1 className="text-3xl font-bold text-center mb-6">Skii Chat</h1>
-
-        <div className="flex justify-center mb-6">
-          <button
-            onClick={() => setView("create")}
-            className={`px-4 py-2 rounded-l-lg font-semibold ${
-              view === "create" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"
-            }`}
-          >
-            Create Room
-          </button>
-          <button
-            onClick={() => setView("join")}
-            className={`px-4 py-2 rounded-r-lg font-semibold ${
-              view === "join" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"
-            }`}
-          >
-            Join Room
-          </button>
-        </div>
-
-        {view === "create" && (
-          <div>
-            <form>
-              <div className="mb-4">
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-400 mb-2"
-                >
-                  Your Email ID
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  readOnly
-                  className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                />
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex flex-col">
+      {/* Header */}
+      <header className="bg-gray-800/90 backdrop-blur-sm shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
               </div>
-              <div className="mb-4">
+              <h1 className="text-xl font-bold text-white">Skii Chat</h1>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-sm text-gray-300">Welcome back</p>
+                <p className="text-sm font-medium text-white">{user?.name || user?.email}</p>
+              </div>
+              <button
+                onClick={logout}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center px-4 py-8">
+        <div className="bg-gray-800/90 backdrop-blur-sm p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-white mb-2">Video Call Room</h2>
+            <p className="text-gray-400">Create or join a secure video call</p>
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="flex bg-gray-700 rounded-lg p-1 mb-6">
+            <button
+              onClick={() => setView("create")}
+              className={`flex-1 px-4 py-2 rounded-md font-medium text-sm transition-all ${
+                view === "create" 
+                  ? "bg-blue-600 text-white shadow-sm" 
+                  : "text-gray-300 hover:text-white hover:bg-gray-600"
+              }`}
+            >
+              Create Room
+            </button>
+            <button
+              onClick={() => setView("join")}
+              className={`flex-1 px-4 py-2 rounded-md font-medium text-sm transition-all ${
+                view === "join" 
+                  ? "bg-blue-600 text-white shadow-sm" 
+                  : "text-gray-300 hover:text-white hover:bg-gray-600"
+              }`}
+            >
+              Join Room
+            </button>
+          </div>
+
+          {/* Create Room View */}
+          {view === "create" && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Room ID
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={room}
+                    readOnly
+                    className="flex-1 px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={generateNewRoom}
+                    className="px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+                    title="Generate new room ID"
+                  >
+                    🔄
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyRoom}
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    title="Copy room ID"
+                  >
+                    📋
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Share this room ID with others to join your call
+                </p>
+              </div>
+
+              <button
+                onClick={handleSubmitForm}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+              >
+                Create & Join Room
+              </button>
+            </div>
+          )}
+
+          {/* Join Room View */}
+          {view === "join" && (
+            <form onSubmit={handleSubmitForm} className="space-y-6">
+              <div>
                 <label
-                  htmlFor="room"
-                  className="block text-sm font-medium text-gray-400 mb-2"
+                  htmlFor="manualRoom"
+                  className="block text-sm font-medium text-gray-300 mb-2"
                 >
-                  Auto-Generated Room ID
+                  Room ID
                 </label>
                 <input
                   type="text"
-                  id="room"
-                  value={room}
-                  readOnly
-                  className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  id="manualRoom"
+                  placeholder="Enter the room ID to join"
+                  value={manualRoom}
+                  onChange={(e) => setManualRoom(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+                  required
                 />
-                <button
-                  type="button"
-                  onClick={handleCopyRoom}
-                  className="mt-2 text-sm text-gray-400 hover:text-gray-200 underline"
-                >
-                  Copy Room ID
-                </button>
+                <p className="text-xs text-gray-500 mt-1">
+                  Ask the host for the room ID
+                </p>
               </div>
+
               <button
                 type="submit"
-                onClick={handleSubmitForm}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg mt-4"
+                disabled={!manualRoom.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors shadow-lg hover:shadow-xl"
               >
                 Join Room
               </button>
             </form>
-          </div>
-        )}
-
-        {view === "join" && (
-          <form onSubmit={handleSubmitForm}>
-            <div className="mb-4">
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-400 mb-2"
-              >
-                Your Email ID
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                readOnly
-                className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              />
-            </div>
-            <div className="mb-4">
-              <label
-                htmlFor="manualRoom"
-                className="block text-sm font-medium text-gray-400 mb-2"
-              >
-                Enter Room ID
-              </label>
-              <input
-                type="text"
-                id="manualRoom"
-                placeholder="Enter Room ID"
-                value={manualRoom}
-                onChange={(e) => setManualRoom(e.target.value)}
-                className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg"
-            >
-              Join Room
-            </button>
-          </form>
-        )}
-      </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 };

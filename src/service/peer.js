@@ -6,7 +6,7 @@ class PeerService extends EventEmitter {
     this.peer = null;
     this.roomId = null;
     this.socket = null;
-
+    
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
@@ -46,7 +46,7 @@ class PeerService extends EventEmitter {
         this.pendingCandidates.push(candidate);
       }
     } catch (error) {
-      console.error("❌ Error adding ICE candidate:", error);
+      console.error("Error adding ICE candidate:", error);
       this.emit("error", {
         type: "ice-candidate",
         message: "Error adding ICE candidate",
@@ -93,7 +93,7 @@ class PeerService extends EventEmitter {
 
       return answer;
     } catch (error) {
-      console.error("❌ Error creating answer:", error);
+      console.error("Error creating answer:", error);
       this.emit("error", {
         type: "answer",
         message: "Error creating answer",
@@ -160,14 +160,14 @@ class PeerService extends EventEmitter {
       await this.initializeWithStun();
     } catch (error) {
       console.log(
-        "🔄 STUN conn. failed, trying turn fallback",
+        "STUN conn. failed, trying turn fallback",
         error
       );
       try {
         await this.initializeWithTurn();
       } catch (stunError) {
         console.error(
-          "❌ Both TURN and STUN initialization failed"
+          "Both TURN and STUN initialization failed"
         );
         throw stunError;
       }
@@ -201,7 +201,7 @@ async initializeWithStun() {
 
     await this.createPeerConnection(config);
   } catch (error) {
-    console.error("❌ Error initializing STUN connection:", error);
+    console.error("Error initializing STUN connection:", error);
     throw error;
   }
 }
@@ -241,7 +241,7 @@ async initializeWithStun() {
 
     await this.createPeerConnection(config);
   } catch (error) {
-    console.error("❌ Error initializing mixed TURN:", error);
+    console.error("Error initializing mixed TURN:", error);
     throw error;
   }
 }
@@ -315,7 +315,7 @@ async initializeWithStun() {
       const state = this.peer?.connectionState;
 
       if (state === "connected") {
-        console.log("✅ Peer connection fully established");
+        console.log("Peer connection fully established");
       } else if (["failed", "disconnected"].includes(state)) {
         this.handleConnectionFailure();
       }
@@ -323,7 +323,7 @@ async initializeWithStun() {
 
     // Signaling state changes
     this.peer.onsignalingstatechange = () => {
-      console.log("📡 Signaling state:", this.peer?.signalingState);
+      console.log("Signaling state:", this.peer?.signalingState);
     };
   }
 
@@ -375,7 +375,7 @@ async initializeWithStun() {
   // Track Management
   async addTracks(stream) {
     if (!this.peer || !stream) {
-      console.error("❌ No peer connection or stream available");
+      console.error("No peer connection or stream available");
       return;
     }
 
@@ -384,7 +384,7 @@ async initializeWithStun() {
         try {
           this.peer.removeTrack(sender);
         } catch (e) {
-          console.warn("⚠️ Error removing existing track:", e.message);
+          console.warn("Error removing existing track:", e.message);
         }
       }
       this.senders.clear();
@@ -396,12 +396,12 @@ async initializeWithStun() {
           const sender = this.peer.addTrack(track, stream);
           this.senders.set(track.kind, sender);
         } catch (e) {
-          console.error(`❌ Error adding ${track.kind} track:`, e);
+          console.error(`Error adding ${track.kind} track:`, e);
         }
       });
 
     } catch (error) {
-      console.error("❌ Error managing tracks:", error);
+      console.error("Error managing tracks:", error);
       this.emit("error", {
         type: "add-tracks",
         message: "Error adding tracks",
@@ -433,12 +433,12 @@ async initializeWithStun() {
         this.isReconnecting = false;
         return;
       } catch (error) {
-        console.error("❌ TURN fallback failed:", error);
+        console.error("TURN fallback failed:", error);
         this.isReconnecting = false;
       }
     }
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error("❌ Max reconnection attempts reached");
+      console.error("Max reconnection attempts reached");
       this.emit("error", {
         type: "reconnect",
         message: "Connection failed. Please refresh and try again.",
@@ -469,7 +469,7 @@ async initializeWithStun() {
 
         this.isReconnecting = false;
       } catch (error) {
-        console.error("❌ Reconnection failed:", error);
+        console.error("Reconnection failed:", error);
         this.isReconnecting = false;
         setTimeout(() => this.handleConnectionFailure(), 1000);
       }
@@ -479,10 +479,10 @@ async initializeWithStun() {
   // Utility Methods
   async switchMediaSource(newStream) {
     if (!this.peer) {
-      console.error("❌ No peer connection available for media switch");
+      console.error("No peer connection available for media switch");
       return;
     }
-    console.log("🔄 Switching media source");
+    console.log("Switching media source");
     await this.addTracks(newStream);
     this.emit("media-source-switched", { newStream });
   }
